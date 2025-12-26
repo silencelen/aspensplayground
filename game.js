@@ -905,8 +905,18 @@ const WeaponUpgrades = {
         return Math.round(baseValue * multiplier);
     },
 
+    // Shop state for multiplayer sync
+    shopOpen: false,
+    localPlayerReady: false,
+    playersReady: new Set(),
+    shopMaxTime: 30,
+
     // Show upgrade shop
     showShop() {
+        this.shopOpen = true;
+        this.localPlayerReady = false;
+        this.playersReady.clear();
+
         document.getElementById('upgrade-shop').style.display = 'flex';
         GameState.isPaused = true;
         this.updateShopUI();
@@ -914,26 +924,59 @@ const WeaponUpgrades = {
         // Unlock cursor for shop interaction
         document.exitPointerLock();
 
-        // Start countdown
-        let countdown = 15;
+        // Start countdown (30 seconds max)
+        let countdown = this.shopMaxTime;
         document.getElementById('shop-countdown').textContent = countdown;
 
         this.shopCountdown = setInterval(() => {
             countdown--;
             document.getElementById('shop-countdown').textContent = countdown;
             if (countdown <= 0) {
-                this.hideShop();
+                this.closeShop();
             }
         }, 1000);
+
+        // In multiplayer, notify server that we're in shop
+        if (GameState.mode === 'multiplayer' && GameState.isConnected) {
+            sendToServer({ type: 'shopOpen' });
+        }
+
+        DebugLog.log('Upgrade shop opened', 'game');
     },
 
-    // Hide shop and continue
-    hideShop() {
+    // Player clicks continue - mark as ready
+    playerReady() {
+        if (!this.shopOpen) return;
+
+        this.localPlayerReady = true;
+
+        if (GameState.mode === 'singleplayer') {
+            // Singleplayer: close immediately
+            this.closeShop();
+        } else if (GameState.mode === 'multiplayer' && GameState.isConnected) {
+            // Multiplayer: notify server we're ready
+            sendToServer({ type: 'shopReady' });
+            document.getElementById('shop-continue-btn').textContent = 'WAITING FOR OTHERS...';
+            document.getElementById('shop-continue-btn').disabled = true;
+        }
+    },
+
+    // Called when all players are ready or timer expires
+    closeShop() {
+        if (!this.shopOpen) return;
+
+        this.shopOpen = false;
+        this.localPlayerReady = false;
+        this.playersReady.clear();
+
         if (this.shopCountdown) {
             clearInterval(this.shopCountdown);
             this.shopCountdown = null;
         }
+
         document.getElementById('upgrade-shop').style.display = 'none';
+        document.getElementById('shop-continue-btn').textContent = 'CONTINUE TO NEXT WAVE';
+        document.getElementById('shop-continue-btn').disabled = false;
         GameState.isPaused = false;
 
         // Re-lock cursor for gameplay
@@ -942,7 +985,28 @@ const WeaponUpgrades = {
             canvas.requestPointerLock();
         }
 
-        startSinglePlayerWave();
+        DebugLog.log('Upgrade shop closed, starting next wave', 'game');
+
+        // Start next wave (singleplayer) or wait for server (multiplayer)
+        if (GameState.mode === 'singleplayer') {
+            startSinglePlayerWave();
+        }
+    },
+
+    // Handle multiplayer shop sync message
+    handleShopSync(message) {
+        if (message.action === 'playerReady') {
+            this.playersReady.add(message.playerId);
+            DebugLog.log(`Player ${message.playerId} ready (${this.playersReady.size}/${message.totalPlayers})`, 'network');
+        } else if (message.action === 'allReady' || message.action === 'forceClose') {
+            // All players ready or server forced close
+            this.closeShop();
+        }
+    },
+
+    // Legacy hideShop for backwards compatibility
+    hideShop() {
+        this.playerReady();
     },
 
     // Update shop UI to reflect current state
@@ -3197,6 +3261,10 @@ function handleServerMessage(message) {
             handleChat(message);
             break;
 
+        case 'shopSync':
+            WeaponUpgrades.handleShopSync(message);
+            break;
+
         default:
             DebugLog.log(`Unknown message type: ${message.type}`, 'warn');
     }
@@ -3619,7 +3687,19 @@ function handleWaveStart(message) {
 function handleWaveComplete(message) {
     DebugLog.log(`Wave ${message.wave} complete! Bonus: ${message.bonus}`, 'success');
     GameState.totalScore += message.bonus;
+    playerState.score += message.bonus;
     updateHUD();
+
+    // Show wave complete announcement
+    const isBossWave = message.wave % 5 === 0;
+    showWaveCompleteAnnouncement(message.wave, message.bonus, isBossWave);
+
+    // Open shop if server says so (after announcement finishes)
+    if (message.showShop) {
+        setTimeout(() => {
+            WeaponUpgrades.showShop();
+        }, 1600);
+    }
 }
 
 function handleGameStart(message) {
@@ -9239,6 +9319,41 @@ function updateConnectionStatus(connected) {
     }
 }
 
+function showWaveCompleteAnnouncement(waveNum, bonus, isBossWave = false) {
+    const announcement = document.createElement('div');
+    const bonusText = bonus ? `+${bonus} POINTS` : '';
+
+    announcement.style.cssText = `
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        font-size: ${isBossWave ? '56px' : '48px'};
+        color: ${isBossWave ? '#ffd700' : '#00ff00'};
+        text-shadow: 0 0 30px ${isBossWave ? '#ffd700' : '#00ff00'}, 0 0 60px ${isBossWave ? '#b8860b' : '#008800'};
+        font-family: 'Creepster', 'Impact', sans-serif; z-index: 150; pointer-events: none;
+        animation: waveComplete 1.5s ease-out forwards; text-align: center;
+    `;
+    announcement.innerHTML = `
+        <div>${isBossWave ? 'BOSS DEFEATED!' : 'WAVE COMPLETE!'}</div>
+        <div style="font-size: 28px; margin-top: 10px; color: #ffd700;">${bonusText}</div>
+    `;
+
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes waveComplete {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            20% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(announcement);
+
+    setTimeout(() => {
+        announcement.remove();
+        style.remove();
+    }, 1500);
+}
+
 function showWaveAnnouncement(waveNum, isBossWave = false) {
     const announcement = document.createElement('div');
 
@@ -11734,30 +11849,24 @@ function killSinglePlayerZombie(zombieId, isHeadshot) {
                 const waveBonus = isBossWave
                     ? 2000 + GameState.wave * 200 // Bigger bonus for boss waves
                     : 500 + GameState.wave * 100;
+                const completedWave = GameState.wave;
                 GameState.wave++;
                 GameState.totalScore += waveBonus;
                 playerState.score += waveBonus;
                 Achievements.trackWave(GameState.wave);
                 Achievements.trackScore(playerState.score);
-                DebugLog.log(`Wave ${GameState.wave - 1} complete! +${waveBonus} bonus`, 'success');
+                DebugLog.log(`Wave ${completedWave} complete! +${waveBonus} bonus`, 'success');
                 updateHUD();
 
-                // Show upgrade shop only after boss waves (every 5th wave)
-                // isBossWave was set before wave increment, so it refers to the completed wave
-                if (isBossWave) {
-                    setTimeout(() => {
-                        if (GameState.isRunning) {
-                            WeaponUpgrades.showShop();
-                        }
-                    }, 1500);
-                } else {
-                    // Normal wave - proceed directly to next wave
-                    setTimeout(() => {
-                        if (GameState.isRunning) {
-                            startSinglePlayerWave();
-                        }
-                    }, 2000);
-                }
+                // Show wave complete announcement
+                showWaveCompleteAnnouncement(completedWave, waveBonus, isBossWave);
+
+                // Show upgrade shop after announcement finishes
+                setTimeout(() => {
+                    if (GameState.isRunning) {
+                        WeaponUpgrades.showShop();
+                    }
+                }, 1600);
             }
         }, 1000);
     }

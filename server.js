@@ -165,7 +165,11 @@ const GameState = {
     lastPickupId: 0,
     spawnInterval: null,
     totalKills: 0,
-    totalScore: 0
+    totalScore: 0,
+    // Shop state
+    shopOpen: false,
+    shopPlayersReady: new Set(),
+    shopTimeout: null
 };
 
 const CONFIG = {
@@ -579,20 +583,94 @@ function nextWave() {
     GameState.wave++;
     GameState.totalScore += CONFIG.scoring.waveBonus;
 
-    log(`Wave ${GameState.wave - 1} complete! Starting Wave ${GameState.wave}...`, 'SUCCESS');
+    log(`Wave ${GameState.wave - 1} complete! Opening upgrade shop...`, 'SUCCESS');
 
+    // Open shop for all players
+    openShop();
+}
+
+// ==================== UPGRADE SHOP MANAGEMENT ====================
+const SHOP_MAX_TIME = 30000; // 30 seconds max
+
+function openShop() {
+    GameState.shopOpen = true;
+    GameState.shopPlayersReady.clear();
+    GameState.isPaused = true;
+
+    // Notify all players to open shop
     broadcast({
         type: 'waveComplete',
         wave: GameState.wave - 1,
         nextWave: GameState.wave,
-        bonus: CONFIG.scoring.waveBonus
+        bonus: CONFIG.scoring.waveBonus,
+        showShop: true
     });
 
+    log(`Upgrade shop opened for ${GameState.players.size} players`, 'GAME');
+
+    // Start shop timeout (30 seconds max)
+    if (GameState.shopTimeout) {
+        clearTimeout(GameState.shopTimeout);
+    }
+    GameState.shopTimeout = setTimeout(() => {
+        if (GameState.shopOpen) {
+            log('Shop timeout - forcing close', 'GAME');
+            closeShop();
+        }
+    }, SHOP_MAX_TIME);
+}
+
+function handleShopReady(playerId) {
+    if (!GameState.shopOpen) return;
+
+    GameState.shopPlayersReady.add(playerId);
+    const totalPlayers = GameState.players.size;
+    const readyCount = GameState.shopPlayersReady.size;
+
+    log(`Player ${playerId} ready in shop (${readyCount}/${totalPlayers})`, 'GAME');
+
+    // Notify all players of ready status
+    broadcast({
+        type: 'shopSync',
+        action: 'playerReady',
+        playerId: playerId,
+        readyCount: readyCount,
+        totalPlayers: totalPlayers
+    });
+
+    // Check if all players are ready
+    if (readyCount >= totalPlayers) {
+        log('All players ready - closing shop', 'SUCCESS');
+        closeShop();
+    }
+}
+
+function closeShop() {
+    if (!GameState.shopOpen) return;
+
+    GameState.shopOpen = false;
+    GameState.shopPlayersReady.clear();
+    GameState.isPaused = false;
+
+    if (GameState.shopTimeout) {
+        clearTimeout(GameState.shopTimeout);
+        GameState.shopTimeout = null;
+    }
+
+    // Notify all players to close shop
+    broadcast({
+        type: 'shopSync',
+        action: 'allReady'
+    });
+
+    log(`Shop closed, starting wave ${GameState.wave}`, 'GAME');
+
+    // Start next wave after brief delay
     setTimeout(() => {
         if (GameState.isRunning) {
             startWave();
         }
-    }, CONFIG.waves.timeBetweenWaves);
+    }, 1000);
 }
 
 // ==================== GAME CONTROL ====================
@@ -1047,6 +1125,14 @@ function handleMessage(playerId, message) {
                     }
                 }
             }
+            break;
+
+        case 'shopOpen':
+            // Player opened shop - this is informational, server controls shop timing
+            break;
+
+        case 'shopReady':
+            handleShopReady(playerId);
             break;
 
         default:
