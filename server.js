@@ -196,7 +196,7 @@ const CONFIG = {
         headshot: 50,
         waveBonus: 500
     },
-    tickRate: 20 // Server updates per second
+    tickRate: 10 // Server updates per second (reduced from 20 for less lag)
 };
 
 // ==================== PLAYER MANAGEMENT ====================

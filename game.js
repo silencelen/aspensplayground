@@ -317,6 +317,170 @@ let localPlayerData = null;
 const remotePlayers = new Map();
 const remotePlayerMeshes = new Map();
 
+// Spectator mode state
+const SpectatorMode = {
+    isSpectating: false,
+    spectatingPlayerId: null,
+    spectatorCamera: null,
+
+    // Get list of alive players to spectate
+    getAlivePlayers() {
+        const alive = [];
+        remotePlayers.forEach((player, id) => {
+            if (player.isAlive) {
+                alive.push({ id, name: player.name });
+            }
+        });
+        return alive;
+    },
+
+    // Enter spectator mode
+    enter() {
+        const alivePlayers = this.getAlivePlayers();
+        if (alivePlayers.length === 0) {
+            DebugLog.log('No players to spectate', 'warn');
+            return false;
+        }
+
+        this.isSpectating = true;
+        this.spectatingPlayerId = alivePlayers[0].id;
+
+        // Detach camera from player and make it independent
+        player.remove(camera);
+        scene.add(camera);
+
+        this.showSpectatorUI();
+        DebugLog.log(`Now spectating: ${alivePlayers[0].name}`, 'info');
+        return true;
+    },
+
+    // Exit spectator mode
+    exit() {
+        this.isSpectating = false;
+        this.spectatingPlayerId = null;
+
+        // Reattach camera to player
+        scene.remove(camera);
+        player.add(camera);
+        camera.position.set(0, 0, 0);
+
+        this.hideSpectatorUI();
+    },
+
+    // Cycle to next alive player
+    cycleNext() {
+        const alivePlayers = this.getAlivePlayers();
+        if (alivePlayers.length === 0) return;
+
+        const currentIndex = alivePlayers.findIndex(p => p.id === this.spectatingPlayerId);
+        const nextIndex = (currentIndex + 1) % alivePlayers.length;
+        this.spectatingPlayerId = alivePlayers[nextIndex].id;
+
+        this.updateSpectatorUI();
+        DebugLog.log(`Now spectating: ${alivePlayers[nextIndex].name}`, 'info');
+    },
+
+    // Cycle to previous alive player
+    cyclePrev() {
+        const alivePlayers = this.getAlivePlayers();
+        if (alivePlayers.length === 0) return;
+
+        const currentIndex = alivePlayers.findIndex(p => p.id === this.spectatingPlayerId);
+        const prevIndex = (currentIndex - 1 + alivePlayers.length) % alivePlayers.length;
+        this.spectatingPlayerId = alivePlayers[prevIndex].id;
+
+        this.updateSpectatorUI();
+        DebugLog.log(`Now spectating: ${alivePlayers[prevIndex].name}`, 'info');
+    },
+
+    // Update camera position to follow spectated player
+    updateCamera() {
+        if (!this.isSpectating || !this.spectatingPlayerId) return;
+
+        const playerData = remotePlayers.get(this.spectatingPlayerId);
+        const mesh = remotePlayerMeshes.get(this.spectatingPlayerId);
+
+        if (!playerData || !mesh) {
+            // Player no longer available, try to find another
+            const alivePlayers = this.getAlivePlayers();
+            if (alivePlayers.length > 0) {
+                this.spectatingPlayerId = alivePlayers[0].id;
+                this.updateSpectatorUI();
+            } else {
+                // No one left to spectate
+                this.isSpectating = false;
+            }
+            return;
+        }
+
+        // Position camera behind and above the spectated player
+        const targetPos = mesh.position.clone();
+        targetPos.y = CONFIG.player.height;
+
+        // Smooth camera follow
+        camera.position.lerp(targetPos, 0.1);
+
+        // Match player rotation if available
+        if (playerData.rotation) {
+            camera.rotation.y = playerData.rotation.y || 0;
+            camera.rotation.x = playerData.rotation.x || 0;
+        }
+    },
+
+    // Show spectator UI
+    showSpectatorUI() {
+        let ui = document.getElementById('spectator-ui');
+        if (!ui) {
+            ui = document.createElement('div');
+            ui.id = 'spectator-ui';
+            ui.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: #fff;
+                padding: 20px 40px;
+                border-radius: 10px;
+                font-family: 'Creepster', cursive;
+                text-align: center;
+                z-index: 1000;
+                border: 2px solid #ff4444;
+            `;
+            document.body.appendChild(ui);
+        }
+        this.updateSpectatorUI();
+        ui.style.display = 'block';
+    },
+
+    // Update spectator UI with current player name
+    updateSpectatorUI() {
+        const ui = document.getElementById('spectator-ui');
+        if (!ui) return;
+
+        const playerData = remotePlayers.get(this.spectatingPlayerId);
+        const playerName = playerData ? playerData.name : 'Unknown';
+        const alivePlayers = this.getAlivePlayers();
+
+        ui.innerHTML = `
+            <div style="color: #ff4444; font-size: 1.5rem; margin-bottom: 10px;">YOU DIED</div>
+            <div style="color: #ffcc00; font-size: 1.2rem;">Spectating: ${playerName}</div>
+            <div style="color: #aaa; font-size: 0.9rem; margin-top: 10px;">
+                [Q] Previous Player | [E] Next Player
+            </div>
+            <div style="color: #888; font-size: 0.8rem; margin-top: 5px;">
+                ${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining
+            </div>
+        `;
+    },
+
+    // Hide spectator UI
+    hideSpectatorUI() {
+        const ui = document.getElementById('spectator-ui');
+        if (ui) ui.style.display = 'none';
+    }
+};
+
 // ==================== GAME STATE ====================
 const GameState = {
     mode: null, // 'singleplayer' or 'multiplayer'
@@ -329,6 +493,7 @@ const GameState = {
     wave: 1,
     zombiesRemaining: 0,
     zombiesSpawned: 0,
+    zombiesToSpawn: 0,
     zombiesPerWave: 5,
     totalKills: 0,
     totalScore: 0,
@@ -2096,12 +2261,22 @@ function initThreeJS() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, CONFIG.player.height, 0);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.zIndex = '1';
+    renderer.domElement.style.willChange = 'contents';
+    renderer.domElement.id = 'game-canvas';
     document.getElementById('game-container').appendChild(renderer.domElement);
+
+    // Force canvas to stay visible
+    renderer.domElement.style.visibility = 'visible';
+    renderer.domElement.style.opacity = '1';
 
     raycaster = new THREE.Raycaster();
 
@@ -3540,6 +3715,14 @@ function handlePlayerDied(playerId) {
         playerState.isAlive = false;
         playerState.health = 0;
         DebugLog.log('You died!', 'error');
+
+        // In multiplayer, try to enter spectator mode if other players are alive
+        if (GameState.mode === 'multiplayer') {
+            const alivePlayers = SpectatorMode.getAlivePlayers();
+            if (alivePlayers.length > 0) {
+                SpectatorMode.enter();
+            }
+        }
     } else {
         const playerData = remotePlayers.get(playerId);
         if (playerData) {
@@ -3550,6 +3733,19 @@ function handlePlayerDied(playerId) {
             const mesh = remotePlayerMeshes.get(playerId);
             if (mesh) {
                 mesh.visible = false;
+            }
+
+            // If we're spectating this player, switch to another
+            if (SpectatorMode.isSpectating && SpectatorMode.spectatingPlayerId === playerId) {
+                const alivePlayers = SpectatorMode.getAlivePlayers();
+                if (alivePlayers.length > 0) {
+                    SpectatorMode.spectatingPlayerId = alivePlayers[0].id;
+                    SpectatorMode.updateSpectatorUI();
+                } else {
+                    // No one left to spectate
+                    SpectatorMode.hideSpectatorUI();
+                    SpectatorMode.isSpectating = false;
+                }
             }
         }
     }
@@ -3705,6 +3901,16 @@ function handleWaveComplete(message) {
 function handleGameStart(message) {
     DebugLog.log('Game starting!', 'game');
 
+    // Clean up any cosmetic preview renderers that might be stealing WebGL context
+    cleanupCosmeticPreviews();
+
+    // Check WebGL context
+    if (renderer.getContext().isContextLost()) {
+        console.error('WebGL context was lost!');
+        // Try to restore
+        renderer.forceContextRestore();
+    }
+
     // Initialize optimization systems
     ZombiePool.init();
     particlePool.preallocate();
@@ -3744,6 +3950,20 @@ function handleGameStart(message) {
     document.getElementById('crosshair').style.display = 'block';
     document.getElementById('multiplayer-panel').style.display = 'block';
 
+    // Hide ALL overlays that might be blocking the view
+    const overlaysToHide = [
+        'click-to-start-overlay',
+        'pause-screen',
+        'upgrade-shop',
+        'cosmetics-screen',
+        'loading-screen',
+        'controls-overlay'
+    ];
+    overlaysToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
     // Pre-warm audio system to prevent first-shot lag
     warmAudioSystem();
 
@@ -3751,9 +3971,55 @@ function handleGameStart(message) {
     if (isMobile) {
         showMobileControls();
     } else {
-        document.body.requestPointerLock();
+        // DEBUG: Skip pointer lock in multiplayer to test if it's causing render freeze
+        if (GameState.mode !== 'multiplayer') {
+            document.body.requestPointerLock();
+        }
     }
     updateHUD();
+}
+
+// Show overlay requiring click to start (needed for pointer lock in multiplayer)
+function showClickToStartOverlay() {
+    let overlay = document.getElementById('click-to-start-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'click-to-start-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            cursor: pointer;
+        `;
+        overlay.innerHTML = `
+            <div style="text-align: center; color: #ff4444; font-family: 'Creepster', cursive;">
+                <h1 style="font-size: 4rem; margin-bottom: 1rem;">GAME STARTING!</h1>
+                <p style="font-size: 2rem; color: #ffcc00;">Click anywhere to begin...</p>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+
+    // Pause the game until player clicks (prevents getting attacked while overlay is shown)
+    GameState.isPaused = true;
+
+    overlay.onclick = () => {
+        overlay.style.display = 'none';
+        // Unpause and ensure correct game state
+        GameState.isPaused = false;
+        GameState.isRunning = true;
+        playerState.isAlive = true;
+        document.body.requestPointerLock();
+        DebugLog.log('Click-to-start: Game unpaused, pointer lock requested', 'game');
+    };
 }
 
 function handleGameOver(message) {
@@ -7339,10 +7605,12 @@ function initMobileControls() {
     }, { passive: false });
 
     // Weapon switching buttons
+    const weaponList = ['pistol', 'smg', 'shotgun', 'rocketLauncher', 'laserGun'];
     weaponBtns.forEach(btn => {
         btn.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const weaponName = btn.dataset.weapon;
+            const weaponIndex = parseInt(btn.dataset.weapon);
+            const weaponName = !isNaN(weaponIndex) ? weaponList[weaponIndex] : btn.dataset.weapon;
             if (weaponName && weaponName !== weapon.current) {
                 switchWeapon(weaponName);
                 updateMobileWeaponButtons();
@@ -7406,8 +7674,15 @@ const WEAPON_ICONS = {
 // Update mobile weapon button states with icons
 function updateMobileWeaponButtons() {
     const weaponBtns = document.querySelectorAll('.mobile-weapon-btn');
+    const weaponList = ['pistol', 'smg', 'shotgun', 'rocketLauncher', 'laserGun'];
+    
     weaponBtns.forEach(btn => {
-        const weaponName = btn.dataset.weapon;
+        const weaponIndex = parseInt(btn.dataset.weapon);
+        const weaponName = !isNaN(weaponIndex) ? weaponList[weaponIndex] : btn.dataset.weapon;
+        
+        // Skip grenade button
+        if (btn.id === 'mobile-grenade') return;
+        
         btn.classList.toggle('active', weaponName === weapon.current);
 
         // Add weapon icon if not already present
@@ -7442,6 +7717,21 @@ function hideMobileControls() {
 }
 
 function onKeyDown(event) {
+    // Spectator controls work even when dead
+    if (SpectatorMode.isSpectating) {
+        switch (event.code) {
+            case 'KeyQ':
+                SpectatorMode.cyclePrev();
+                return;
+            case 'KeyE':
+                SpectatorMode.cycleNext();
+                return;
+            case 'Escape':
+                togglePause();
+                return;
+        }
+    }
+
     if (!GameState.isRunning || GameState.isPaused) return;
 
     switch (event.code) {
@@ -7477,8 +7767,8 @@ function onKeyDown(event) {
             }
             break;
         case 'KeyE':
-            // Interact/pickup
-            if (nearbyPickup) {
+            // Interact/pickup (only when alive)
+            if (playerState.isAlive && nearbyPickup) {
                 if (GameState.mode === 'singleplayer') {
                     collectSinglePlayerPickup(nearbyPickup);
                 } else {
@@ -7543,8 +7833,16 @@ function onMouseUp(event) {
 function onPointerLockChange() {
     pointerLocked = document.pointerLockElement === document.body;
 
-    if (!pointerLocked && GameState.isRunning && !GameState.isPaused && !GameState.isGameOver) {
-        togglePause();
+    // Don't auto-pause on mobile when pointer lock is lost
+    const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    // In multiplayer, don't auto-pause if pointer lock fails (might be initial request)
+    // Only pause if we HAD pointer lock and lost it (user pressed ESC)
+    if (!isMobileDevice && !pointerLocked && GameState.isRunning && !GameState.isPaused && !GameState.isGameOver) {
+        // Only pause in singleplayer, or if we explicitly had pointer lock before
+        if (GameState.mode === 'singleplayer') {
+            togglePause();
+        }
     }
 }
 
@@ -8987,6 +9285,28 @@ function updateHUD() {
         grenadeDisplay.textContent = weapon.grenades;
     }
 
+    // Update mobile HUD elements
+    const mobileScore = document.getElementById('mobile-score');
+    const mobileKills = document.getElementById('mobile-kills');
+    const mobileWaveNum = document.getElementById('mobile-wave-num');
+    const mobileWeaponName = document.getElementById('mobile-weapon-name');
+    const mobileAmmoCount = document.getElementById('mobile-ammo-count');
+
+    if (mobileScore) mobileScore.textContent = playerState.score;
+    if (mobileKills) mobileKills.textContent = playerState.kills;
+    if (mobileWaveNum) mobileWaveNum.textContent = GameState.wave;
+    if (mobileWeaponName) {
+        const stats = getWeaponStats();
+        mobileWeaponName.textContent = stats.name;
+    }
+    if (mobileAmmoCount) {
+        if (weapon.current === 'pistol') {
+            mobileAmmoCount.textContent = '∞';
+        } else {
+            mobileAmmoCount.textContent = weapon.ammo + '/' + weapon.reserveAmmo;
+        }
+    }
+
     // Low health warning effect
     updateLowHealthEffect();
 
@@ -9644,7 +9964,20 @@ function animate() {
         }
     }
 
+    // Spectator mode camera updates (when dead but spectating in multiplayer)
+    if (SpectatorMode.isSpectating) {
+        SpectatorMode.updateCamera();
+        updateRemotePlayerPositions(); // Keep updating remote player positions
+        updateRemotePlayerAnimations(deltaTime);
+    }
+
+    // Force matrix updates before render (fixes frozen scene in multiplayer)
+    player.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+    scene.updateMatrixWorld(true);
+
     renderer.render(scene, camera);
+
     fpsFrames++;
 }
 
@@ -10292,7 +10625,7 @@ const WaveSystem = {
 function startSinglePlayerWave() {
     // Clear any existing spawn timer first (safety check)
     if (GameState.spawnTimer) {
-        clearInterval(GameState.spawnTimer);
+        clearTimeout(GameState.spawnTimer);
         GameState.spawnTimer = null;
     }
 
@@ -10307,28 +10640,31 @@ function startSinglePlayerWave() {
 
     GameState.zombiesRemaining = zombieCount;
     GameState.zombiesSpawned = 0;
+    GameState.zombiesToSpawn = zombieCount;
 
     DebugLog.log(`Starting Wave ${GameState.wave} with ${zombieCount} zombies (interval: ${spawnInterval}ms)`, 'game');
     showWaveAnnouncement(GameState.wave);
     updateHUD();
     hideBossHealthBar();
 
-    // Spawn first zombie immediately, then continue with interval
-    if (zombieCount > 0 && GameState.isRunning && !GameState.isPaused) {
-        spawnSinglePlayerZombie();
-        let spawned = 1;
+    // Spawn zombies using recursive setTimeout - more reliable on mobile
+    if (zombieCount > 0 && GameState.isRunning) {
+        spawnNextZombie(zombieCount, spawnInterval);
+    }
+}
 
-        if (zombieCount > 1) {
-            GameState.spawnTimer = setInterval(() => {
-                if (spawned < zombieCount && GameState.isRunning && !GameState.isPaused) {
-                    spawnSinglePlayerZombie();
-                    spawned++;
-                }
-                if (spawned >= zombieCount || !GameState.isRunning) {
-                    clearInterval(GameState.spawnTimer);
-                    GameState.spawnTimer = null;
-                }
-            }, spawnInterval);
+// Recursive spawn function - doesn't check isPaused, just isRunning
+function spawnNextZombie(totalCount, interval) {
+    if (!GameState.isRunning || GameState.isGameOver) return;
+
+    if (GameState.zombiesToSpawn > 0) {
+        spawnSinglePlayerZombie();
+        GameState.zombiesToSpawn--;
+
+        if (GameState.zombiesToSpawn > 0) {
+            GameState.spawnTimer = setTimeout(() => {
+                spawnNextZombie(totalCount, interval);
+            }, interval);
         }
     }
 }
@@ -11861,7 +12197,7 @@ function killSinglePlayerZombie(zombieId, isHeadshot) {
                 // Show wave complete announcement
                 showWaveCompleteAnnouncement(completedWave, waveBonus, isBossWave);
 
-                // Show upgrade shop after announcement finishes
+                // Show upgrade shop after announcement
                 setTimeout(() => {
                     if (GameState.isRunning) {
                         WeaponUpgrades.showShop();

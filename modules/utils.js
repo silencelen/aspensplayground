@@ -205,6 +205,9 @@ const CollisionGrid = {
 // ==================== DELTA COMPRESSION ====================
 const DeltaCompression = {
     lastState: new Map(),
+    lastPlayerState: null,
+    positionThreshold: 0.01,
+    rotationThreshold: 0.01,
 
     compress(entityId, currentState) {
         const last = this.lastState.get(entityId);
@@ -227,8 +230,34 @@ const DeltaCompression = {
         return hasChanges ? delta : null;
     },
 
+    // Get compressed player update - only returns data if position/rotation changed significantly
+    getCompressedUpdate(position, rotation) {
+        const current = {
+            x: position.x,
+            z: position.z,
+            rotY: rotation.y
+        };
+
+        if (!this.lastPlayerState) {
+            this.lastPlayerState = { ...current };
+            return current;
+        }
+
+        const dx = Math.abs(current.x - this.lastPlayerState.x);
+        const dz = Math.abs(current.z - this.lastPlayerState.z);
+        const dRotY = Math.abs(current.rotY - this.lastPlayerState.rotY);
+
+        if (dx > this.positionThreshold || dz > this.positionThreshold || dRotY > this.rotationThreshold) {
+            this.lastPlayerState = { ...current };
+            return current;
+        }
+
+        return null;
+    },
+
     reset() {
         this.lastState.clear();
+        this.lastPlayerState = null;
     }
 };
 

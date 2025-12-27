@@ -2050,43 +2050,63 @@
 
     <!-- Mobile Controls -->
     <div id="mobile-controls">
-        <!-- Mobile Health Bar (top-left) -->
-        <div id="mobile-health">
-            <div class="mobile-health-label">HP</div>
-            <div id="mobile-health-bar-container">
-                <div id="mobile-health-bar"></div>
+        <!-- Top-left HUD: Health + Stats -->
+        <div id="mobile-hud-left">
+            <div id="mobile-health">
+                <div class="mobile-health-label">HP</div>
+                <div id="mobile-health-bar-container">
+                    <div id="mobile-health-bar"></div>
+                </div>
+            </div>
+            <div id="mobile-stats">
+                <div class="mobile-stat">
+                    <span class="mobile-stat-value" id="mobile-score">0</span>
+                    <span class="mobile-stat-label">SCORE</span>
+                </div>
+                <div class="mobile-stat-divider">|</div>
+                <div class="mobile-stat">
+                    <span class="mobile-stat-value" id="mobile-kills">0</span>
+                    <span class="mobile-stat-label">KILLS</span>
+                </div>
+            </div>
+            <div id="mobile-wave">WAVE <span id="mobile-wave-num">1</span></div>
+            <div id="mobile-ammo">
+                <span id="mobile-weapon-name">Pistol</span>
+                <span id="mobile-ammo-count">12/60</span>
             </div>
         </div>
 
-        <!-- Left side: Movement joystick and sprint -->
+        <!-- Bottom-left: Movement joystick -->
         <div id="joystick-container">
             <div id="joystick-base">
                 <div id="joystick-stick"></div>
             </div>
-            <button id="mobile-sprint" class="mobile-btn sprint-btn">SPRINT</button>
         </div>
 
-        <!-- Right side: Action buttons -->
+        <!-- Sprint button - above joystick -->
+        <button id="mobile-sprint" class="mobile-btn sprint-btn">SPRINT</button>
+
+        <!-- Bottom-right: Action buttons -->
         <div id="mobile-buttons">
             <button id="mobile-shoot" class="mobile-btn shoot-btn">FIRE</button>
             <div id="mobile-secondary-buttons">
-                <button id="mobile-reload" class="mobile-btn secondary-btn">RELOAD</button>
+                <button id="mobile-reload" class="mobile-btn secondary-btn">R</button>
                 <button id="mobile-jump" class="mobile-btn secondary-btn">JUMP</button>
-                <button id="mobile-interact" class="mobile-btn secondary-btn interact-btn">PICK UP</button>
+                <button id="mobile-interact" class="mobile-btn secondary-btn interact-btn">E</button>
             </div>
         </div>
 
-        <!-- Weapon switching (top-middle) -->
+        <!-- Bottom-center: Weapon switching -->
         <div id="mobile-weapons">
-            <button id="mobile-weapon-1" class="mobile-weapon-btn active" data-weapon="pistol">1</button>
-            <button id="mobile-weapon-2" class="mobile-weapon-btn" data-weapon="smg">2</button>
-            <button id="mobile-weapon-3" class="mobile-weapon-btn" data-weapon="shotgun">3</button>
-            <button id="mobile-weapon-4" class="mobile-weapon-btn" data-weapon="rocketLauncher">4</button>
-            <button id="mobile-weapon-5" class="mobile-weapon-btn" data-weapon="laserGun">5</button>
-            <button id="mobile-grenade" class="mobile-weapon-btn" style="background: linear-gradient(145deg, #2d4a2d, #1a2e1a);">G</button>
+            <button class="mobile-weapon-btn active" data-weapon="0">1</button>
+            <button class="mobile-weapon-btn" data-weapon="1">2</button>
+            <button class="mobile-weapon-btn" data-weapon="2">3</button>
+            <button class="mobile-weapon-btn" data-weapon="3">4</button>
+            <button class="mobile-weapon-btn" data-weapon="4">5</button>
+            <button id="mobile-grenade" class="mobile-weapon-btn grenade-btn">G</button>
         </div>
 
-        <!-- Look area covers the right side -->
+        <!-- Look area for camera control -->
         <div id="mobile-look-area"></div>
     </div>
 
@@ -2107,35 +2127,41 @@
             display: block;
         }
 
-        /* Mobile Health Bar (top-left) */
-        #mobile-health {
+        /* Mobile HUD Left Panel - Health, Stats, Wave, Ammo */
+        #mobile-hud-left {
             position: absolute;
-            top: 15px;
-            left: 15px;
+            top: 10px;
+            left: 10px;
             display: flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #8b0000;
-            border-radius: 8px;
-            padding: 8px 12px;
+            flex-direction: column;
+            gap: 4px;
             pointer-events: none;
             z-index: 85;
         }
 
+        #mobile-health {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 2px solid #8b0000;
+            border-radius: 6px;
+            padding: 6px 10px;
+        }
+
         .mobile-health-label {
             color: #ff4444;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
             text-shadow: 0 0 5px #ff0000;
         }
 
         #mobile-health-bar-container {
-            width: 100px;
-            height: 14px;
+            width: 90px;
+            height: 12px;
             background: #333;
-            border: 2px solid #8b0000;
-            border-radius: 7px;
+            border: 1px solid #8b0000;
+            border-radius: 6px;
             overflow: hidden;
         }
 
@@ -2144,19 +2170,87 @@
             height: 100%;
             background: linear-gradient(90deg, #8b0000, #ff0000);
             transition: width 0.3s ease;
-            box-shadow: 0 0 10px #ff0000 inset;
+            box-shadow: 0 0 8px #ff0000 inset;
+        }
+
+        #mobile-stats {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 2px solid #8b0000;
+            border-radius: 6px;
+            padding: 5px 10px;
+        }
+
+        .mobile-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .mobile-stat-value {
+            color: #ff4444;
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 0 0 8px #ff0000;
+        }
+
+        .mobile-stat-label {
+            color: #ff8888;
+            font-size: 8px;
+            text-transform: uppercase;
+        }
+
+        .mobile-stat-divider {
+            color: #8b0000;
+            font-size: 14px;
+        }
+
+        #mobile-wave {
+            background: rgba(0, 0, 0, 0.75);
+            border: 2px solid #ff6600;
+            border-radius: 6px;
+            padding: 4px 10px;
+            color: #ff6600;
+            font-size: 12px;
+            text-shadow: 0 0 8px #ff6600;
+            text-align: center;
+        }
+
+        #mobile-wave-num {
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        #mobile-ammo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.75);
+            border: 2px solid #666;
+            border-radius: 6px;
+            padding: 4px 10px;
+            color: #fff;
+            font-size: 11px;
+        }
+
+        #mobile-weapon-name {
+            color: #ffaa00;
+            font-weight: bold;
+        }
+
+        #mobile-ammo-count {
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
         }
 
         #joystick-container {
             position: absolute;
-            bottom: 30px;
+            bottom: 25px;
             left: 15px;
             pointer-events: auto;
             touch-action: none;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
             z-index: 85;
         }
 
@@ -2184,18 +2278,26 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
         }
 
+        #mobile-sprint {
+            position: absolute;
+            bottom: 160px;
+            left: 45px;
+            pointer-events: auto;
+            z-index: 85;
+        }
+
         .sprint-btn {
-            width: 80px !important;
-            height: 40px !important;
-            border-radius: 20px !important;
-            background: rgba(0, 150, 255, 0.5) !important;
-            border-color: rgba(100, 180, 255, 0.7) !important;
+            width: 70px !important;
+            height: 36px !important;
+            border-radius: 18px !important;
+            background: rgba(0, 150, 255, 0.6) !important;
+            border: 2px solid rgba(100, 180, 255, 0.8) !important;
             font-size: 10px !important;
         }
 
         .sprint-btn.active {
-            background: rgba(0, 200, 255, 0.8) !important;
-            box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
+            background: rgba(0, 200, 255, 0.9) !important;
+            box-shadow: 0 0 15px rgba(0, 200, 255, 0.6);
         }
 
         #mobile-buttons {
@@ -2283,27 +2385,31 @@
             50% { box-shadow: 0 0 25px rgba(0, 255, 0, 0.8); }
         }
 
-        /* Weapon switching buttons */
+        /* Weapon switching buttons - bottom center */
         #mobile-weapons {
             position: absolute;
-            top: 80px;
+            bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             flex-direction: row;
-            gap: 10px;
+            gap: 6px;
             pointer-events: auto;
             z-index: 85;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 6px 10px;
+            border-radius: 25px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
         }
 
         .mobile-weapon-btn {
-            width: 44px;
-            height: 44px;
+            width: 42px;
+            height: 42px;
             border-radius: 8px;
-            background: rgba(60, 60, 60, 0.8);
-            border: 2px solid rgba(255, 255, 255, 0.4);
+            background: rgba(60, 60, 60, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             color: #fff;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
             font-family: 'Courier New', monospace;
             cursor: pointer;
@@ -2314,32 +2420,44 @@
             align-items: center;
             justify-content: center;
             padding: 6px;
+            transition: all 0.15s ease;
         }
 
         .mobile-weapon-btn svg {
             width: 100%;
             height: 100%;
             color: rgba(255, 255, 255, 0.9);
-            filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8));
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
         }
 
         .mobile-weapon-btn.active {
-            background: rgba(255, 100, 0, 0.8);
-            border-color: rgba(255, 180, 100, 0.9);
-            box-shadow: 0 0 15px rgba(255, 100, 0, 0.6);
+            background: rgba(255, 100, 0, 0.9);
+            border-color: rgba(255, 180, 100, 1);
+            box-shadow: 0 0 12px rgba(255, 100, 0, 0.7);
+            transform: scale(1.1);
         }
 
         .mobile-weapon-btn.active svg {
             color: #fff;
-            filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5));
+            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.6));
+        }
+
+        .mobile-weapon-btn.grenade-btn {
+            background: linear-gradient(145deg, #2d4a2d, #1a2e1a);
+            border-color: rgba(100, 200, 100, 0.5);
+        }
+
+        .mobile-weapon-btn.grenade-btn.active {
+            background: linear-gradient(145deg, #3d6a3d, #2a4e2a);
+            box-shadow: 0 0 12px rgba(100, 255, 100, 0.5);
         }
 
         #mobile-look-area {
             position: absolute;
             top: 0;
-            right: 0;
-            width: 50%;
-            height: 50%;
+            left: 20%;
+            width: 60%;
+            height: 60%;
             pointer-events: auto;
             touch-action: none;
         }
@@ -2353,107 +2471,90 @@
 
         /* Adjust HUD for mobile */
         @media (max-width: 900px), (hover: none) {
-            /* Hide desktop health panel on mobile - use mobile HP bar instead */
+            /* Hide ALL desktop HUD on mobile - use mobile HUD instead */
             #health-panel {
                 display: none !important;
             }
 
             #hud {
-                bottom: 180px !important;
-                left: 10px !important;
-                right: 10px !important;
+                display: none !important;
             }
 
-            .hud-panel {
-                padding: 5px 8px !important;
-                font-size: 9px;
-            }
-
-            .hud-value {
-                font-size: 12px !important;
-            }
-
-            #health-bar-container {
-                width: 80px !important;
-                height: 15px !important;
+            #hud-top {
+                display: none !important;
             }
 
             #center-hud {
-                display: none;
-            }
-
-            #minimap {
-                width: 80px !important;
-                height: 80px !important;
-                top: 10px !important;
-                right: 10px !important;
-            }
-
-            #minimap-canvas {
-                width: 80px !important;
-                height: 80px !important;
-            }
-
-            #boss-health-container {
-                width: 80% !important;
-                top: 10px !important;
-            }
-
-            #boss-name {
-                font-size: 16px !important;
-            }
-
-            #boss-health-bar-bg {
-                height: 18px !important;
+                display: none !important;
             }
 
             .controls-info {
                 display: none !important;
             }
 
-            /* Make crosshair more visible on mobile */
-            #crosshair::before,
-            #crosshair::after {
-                box-shadow: 0 0 15px #ff0000, 0 0 5px #fff;
-            }
-
-            /* Minimap adjustments for mobile - smaller and repositioned */
+            /* Minimap - top right, smaller */
             #minimap {
-                width: 80px !important;
-                height: 80px !important;
+                width: 70px !important;
+                height: 70px !important;
                 top: 10px !important;
                 right: 10px !important;
                 border-width: 2px !important;
             }
 
             #minimap-canvas {
-                width: 80px !important;
-                height: 80px !important;
+                width: 70px !important;
+                height: 70px !important;
             }
 
-            /* Kill feed positioned below smaller mobile minimap */
+            /* Boss health bar */
+            #boss-health-container {
+                width: 60% !important;
+                top: 10px !important;
+            }
+
+            #boss-name {
+                font-size: 14px !important;
+            }
+
+            #boss-health-bar-bg {
+                height: 16px !important;
+            }
+
+            /* Make crosshair more visible on mobile */
+            #crosshair {
+                width: 24px;
+                height: 24px;
+            }
+
+            #crosshair::before,
+            #crosshair::after {
+                box-shadow: 0 0 15px #ff0000, 0 0 5px #fff;
+            }
+
+            /* Kill feed - below minimap */
             #kill-feed {
-                top: 100px !important; /* 10px + 80px minimap + 10px gap */
+                top: 90px !important;
                 right: 10px !important;
-                width: 200px !important;
+                width: 150px !important;
             }
 
             .kill-entry {
-                padding: 4px 8px !important;
-                font-size: 10px !important;
+                padding: 3px 6px !important;
+                font-size: 9px !important;
             }
 
-            /* Multiplayer panel positioned to left side on mobile */
+            /* Multiplayer panel - below mobile HUD on left */
             #multiplayer-panel {
-                top: 100px !important;
+                top: auto !important;
+                bottom: 200px !important;
                 left: 10px !important;
                 right: auto !important;
-                bottom: auto !important;
                 font-size: 9px;
-                min-width: 70px;
-                padding: 6px;
+                min-width: 60px;
+                padding: 5px;
             }
 
+            /* Menu styles */
             .menu-title {
                 font-size: 32px !important;
             }
@@ -2473,12 +2574,8 @@
                 gap: 10px;
             }
 
-            .controls-info {
-                display: none;
-            }
-
             #interact-prompt {
-                bottom: 220px !important;
+                bottom: 180px !important;
                 font-size: 12px;
                 padding: 8px 16px !important;
             }
@@ -2488,9 +2585,196 @@
                 max-width: 90vw;
             }
 
-            #crosshair {
-                width: 20px;
-                height: 20px;
+            /* Start screen / Main menu mobile fixes */
+            #start-screen {
+                padding: 10px;
+                overflow-y: auto;
+            }
+
+            #start-screen .menu-title {
+                font-size: 28px !important;
+                margin-bottom: 8px;
+            }
+
+            #start-screen .menu-subtitle {
+                font-size: 12px !important;
+                margin-bottom: 15px !important;
+            }
+
+            .player-name-container {
+                margin-bottom: 15px;
+            }
+
+            .player-name-input {
+                width: 220px;
+                font-size: 16px;
+                padding: 10px 15px;
+            }
+
+            .menu-buttons-corner {
+                position: relative;
+                bottom: auto;
+                right: auto;
+                flex-direction: row;
+                margin-top: 15px;
+            }
+
+            .cosmetics-button {
+                font-size: 11px !important;
+                padding: 8px 15px !important;
+            }
+
+            .leaderboard-toggle {
+                font-size: 12px;
+                padding: 6px 15px;
+                margin-top: 10px;
+            }
+
+            #menu-leaderboard {
+                max-height: 150px;
+                min-width: auto;
+                width: 90%;
+            }
+
+            /* Upgrade Shop mobile fixes */
+            #upgrade-shop {
+                overflow-y: auto;
+                padding: 10px;
+            }
+
+            .shop-container {
+                padding: 10px;
+                max-height: 100%;
+                overflow-y: auto;
+            }
+
+            .shop-title {
+                font-size: 24px !important;
+            }
+
+            .shop-points {
+                font-size: 18px !important;
+            }
+
+            .shop-subtitle {
+                font-size: 12px !important;
+                margin-bottom: 5px !important;
+            }
+
+            .shop-disclaimer {
+                font-size: 10px !important;
+                padding: 5px 10px !important;
+                margin-bottom: 8px !important;
+            }
+
+            .shop-weapons {
+                gap: 8px !important;
+                margin-bottom: 10px !important;
+            }
+
+            .weapon-upgrade-card {
+                width: 140px !important;
+                padding: 8px !important;
+            }
+
+            .weapon-name {
+                font-size: 12px !important;
+                margin-bottom: 6px !important;
+            }
+
+            .upgrade-row {
+                margin-bottom: 4px !important;
+                gap: 4px !important;
+            }
+
+            .upgrade-label {
+                font-size: 9px !important;
+                width: 55px !important;
+            }
+
+            .pip {
+                width: 8px !important;
+                height: 8px !important;
+            }
+
+            .upgrade-btn {
+                font-size: 9px !important;
+                padding: 2px 4px !important;
+                min-width: 35px !important;
+            }
+
+            #shop-continue-btn {
+                font-size: 14px !important;
+                padding: 10px 20px !important;
+                margin-top: 5px !important;
+            }
+
+            /* Game over screen mobile fixes */
+            #game-over-screen {
+                padding: 15px;
+                overflow-y: auto;
+            }
+
+            #final-score {
+                font-size: 32px !important;
+                margin: 10px 0 !important;
+            }
+
+            #stats-dashboard {
+                padding: 10px;
+                margin: 10px 0;
+            }
+
+            .stat-card {
+                padding: 6px 10px;
+                min-width: 70px;
+            }
+
+            .stat-icon {
+                font-size: 16px;
+            }
+
+            .stat-value {
+                font-size: 16px;
+            }
+
+            .stat-label {
+                font-size: 8px;
+            }
+
+            #gameover-leaderboard {
+                max-height: 120px;
+                min-width: auto;
+                padding: 10px;
+            }
+
+            /* Cosmetics screen mobile */
+            .cosmetics-container {
+                padding: 15px;
+                max-height: 100vh;
+                overflow-y: auto;
+            }
+
+            .cosmetics-grid {
+                gap: 10px;
+            }
+
+            .cosmetic-option {
+                width: 100px;
+                padding: 8px;
+            }
+
+            .cosmetic-preview {
+                width: 80px;
+                height: 100px;
+            }
+
+            .cosmetic-name {
+                font-size: 12px;
+            }
+
+            .cosmetic-desc {
+                font-size: 9px;
             }
         }
     </style>
