@@ -150,27 +150,91 @@ function log(message, type = 'INFO') {
     console.log(`${colors[type] || ''}[${timestamp}] [${type}] ${message}${reset}`);
 }
 
-// ==================== GAME STATE ====================
-const GameState = {
-    players: new Map(),
-    zombies: new Map(),
-    pickups: new Map(),
-    wave: 1,
-    zombiesRemaining: 0,
-    zombiesSpawned: 0,
-    isRunning: false,
-    isInLobby: true, // Start in lobby mode
-    isPaused: false,
-    lastZombieId: 0,
-    lastPickupId: 0,
-    spawnInterval: null,
-    totalKills: 0,
-    totalScore: 0,
-    // Shop state
-    shopOpen: false,
-    shopPlayersReady: new Set(),
-    shopTimeout: null
-};
+// ==================== MULTI-LOBBY SYSTEM ====================
+const gameRooms = new Map(); // roomId -> GameRoom
+const playerRooms = new Map(); // playerId -> roomId
+
+function createGameRoom() {
+    const roomId = uuidv4();
+    const room = {
+        id: roomId,
+        players: new Map(),
+        zombies: new Map(),
+        pickups: new Map(),
+        wave: 1,
+        zombiesRemaining: 0,
+        zombiesSpawned: 0,
+        isRunning: false,
+        isInLobby: true,
+        isPaused: false,
+        lastZombieId: 0,
+        lastPickupId: 0,
+        spawnInterval: null,
+        totalKills: 0,
+        totalScore: 0,
+        shopOpen: false,
+        shopPlayersReady: new Set(),
+        shopTimeout: null,
+        countdownTimer: null,
+        countdownSeconds: 0,
+        gameLoopInterval: null
+    };
+    gameRooms.set(roomId, room);
+    log(`Created new game room: ${roomId}`, 'INFO');
+    return room;
+}
+
+function findOrCreateLobby() {
+    // Find an existing lobby that's not running
+    for (const [roomId, room] of gameRooms) {
+        if (room.isInLobby && !room.isRunning && room.players.size < 8) {
+            log(`Found existing lobby: ${roomId} with ${room.players.size} players`, 'INFO');
+            return room;
+        }
+    }
+    // No available lobby, create new one
+    return createGameRoom();
+}
+
+function getPlayerRoom(playerId) {
+    const roomId = playerRooms.get(playerId);
+    return roomId ? gameRooms.get(roomId) : null;
+}
+
+function cleanupEmptyRooms() {
+    for (const [roomId, room] of gameRooms) {
+        if (room.players.size === 0) {
+            // Clear any intervals
+            if (room.spawnInterval) clearInterval(room.spawnInterval);
+            if (room.countdownTimer) clearInterval(room.countdownTimer);
+            if (room.gameLoopInterval) clearInterval(room.gameLoopInterval);
+            if (room.shopTimeout) clearTimeout(room.shopTimeout);
+            gameRooms.delete(roomId);
+            log(`Removed empty room: ${roomId}`, 'INFO');
+        }
+    }
+}
+
+// Legacy compatibility - points to first room or creates one
+// This getter ensures existing code that uses GameState still works
+const GameState = new Proxy({}, {
+    get(target, prop) {
+        // Get the first room or create one
+        if (gameRooms.size === 0) {
+            createGameRoom();
+        }
+        const firstRoom = gameRooms.values().next().value;
+        return firstRoom ? firstRoom[prop] : undefined;
+    },
+    set(target, prop, value) {
+        if (gameRooms.size === 0) {
+            createGameRoom();
+        }
+        const firstRoom = gameRooms.values().next().value;
+        if (firstRoom) firstRoom[prop] = value;
+        return true;
+    }
+});
 
 const CONFIG = {
     waves: {
@@ -201,13 +265,17 @@ const CONFIG = {
 
 // ==================== PLAYER MANAGEMENT ====================
 function createPlayer(ws, id) {
+    // Find or create a lobby for this player
+    const room = findOrCreateLobby();
+
     const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff, 0xff8844, 0x88ff44];
-    const playerNum = GameState.players.size;
+    const playerNum = room.players.size;
 
     const player = {
         id: id,
         name: `Player ${playerNum + 1}`,
         ws: ws,
+        roomId: room.id,
         position: { x: (Math.random() - 0.5) * 10, y: 1.8, z: 10 + Math.random() * 5 },
         rotation: { x: 0, y: 0 },
         health: 100,
@@ -220,34 +288,38 @@ function createPlayer(ws, id) {
         score: 0
     };
 
-    GameState.players.set(id, player);
-    log(`Player ${player.name} (${id}) joined lobby. Total players: ${GameState.players.size}`, 'PLAYER');
+    room.players.set(id, player);
+    playerRooms.set(id, room.id);
+    log(`Player ${player.name} (${id}) joined room ${room.id}. Room players: ${room.players.size}`, 'PLAYER');
 
     return player;
 }
 
 function removePlayer(id) {
-    const player = GameState.players.get(id);
-    if (player) {
-        log(`Player ${player.name} (${id}) left. Total players: ${GameState.players.size - 1}`, 'PLAYER');
-        GameState.players.delete(id);
+    const room = getPlayerRoom(id);
+    if (!room) return;
 
-        // Broadcast player left
-        broadcast({
+    const player = room.players.get(id);
+    if (player) {
+        log(`Player ${player.name} (${id}) left room ${room.id}. Room players: ${room.players.size - 1}`, 'PLAYER');
+        room.players.delete(id);
+        playerRooms.delete(id);
+
+        // Broadcast player left to room
+        broadcastToRoom(room, {
             type: 'playerLeft',
             playerId: id
         });
 
         // If in lobby, update lobby state
-        if (GameState.isInLobby) {
-            broadcastLobbyUpdate();
+        if (room.isInLobby) {
+            broadcastLobbyUpdateToRoom(room);
         }
 
-        // Check if game should stop
-        if (GameState.players.size === 0) {
-            stopGame();
-            // Reset to lobby state
-            GameState.isInLobby = true;
+        // Check if room should be cleaned up or game stopped
+        if (room.players.size === 0) {
+            stopGameInRoom(room);
+            cleanupEmptyRooms();
         }
     }
 }
@@ -825,6 +897,21 @@ function broadcast(message, excludeId = null) {
     });
 }
 
+// Room-specific broadcast
+function broadcastToRoom(room, message, excludeId = null) {
+    if (!room) return;
+    const data = JSON.stringify(message);
+    room.players.forEach((player, id) => {
+        if (id !== excludeId && player.ws && player.ws.readyState === WebSocket.OPEN) {
+            try {
+                player.ws.send(data);
+            } catch (e) {
+                log(`WebSocket send error to ${id}: ${e.message}`, 'ERROR');
+            }
+        }
+    });
+}
+
 function broadcastLobbyUpdate() {
     const lobbyPlayers = [];
     GameState.players.forEach((player, id) => {
@@ -844,6 +931,27 @@ function broadcastLobbyUpdate() {
     });
 }
 
+// Room-specific lobby update
+function broadcastLobbyUpdateToRoom(room) {
+    if (!room) return;
+    const lobbyPlayers = [];
+    room.players.forEach((player, id) => {
+        lobbyPlayers.push({
+            id: player.id,
+            name: player.name,
+            isReady: player.isReady,
+            color: player.color,
+            cosmetic: player.cosmetic
+        });
+    });
+
+    broadcastToRoom(room, {
+        type: 'lobbyUpdate',
+        players: lobbyPlayers,
+        allReady: checkAllReadyInRoom(room)
+    });
+}
+
 function checkAllReady() {
     if (GameState.players.size === 0) return false;
 
@@ -855,44 +963,166 @@ function checkAllReady() {
     return allReady;
 }
 
+function checkAllReadyInRoom(room) {
+    if (!room || room.players.size === 0) return false;
+
+    let allReady = true;
+    room.players.forEach(player => {
+        if (!player.isReady) allReady = false;
+    });
+
+    return allReady;
+}
+
+function stopGameInRoom(room) {
+    if (!room) return;
+
+    room.isRunning = false;
+    room.isInLobby = true;
+
+    if (room.spawnInterval) {
+        clearInterval(room.spawnInterval);
+        room.spawnInterval = null;
+    }
+    if (room.gameLoopInterval) {
+        clearInterval(room.gameLoopInterval);
+        room.gameLoopInterval = null;
+    }
+    if (room.countdownTimer) {
+        clearInterval(room.countdownTimer);
+        room.countdownTimer = null;
+    }
+
+    // Clear zombies and pickups
+    room.zombies.clear();
+    room.pickups.clear();
+
+    log(`Game stopped in room ${room.id}`, 'GAME');
+}
+
 function setPlayerReady(playerId, isReady) {
-    const player = GameState.players.get(playerId);
+    const room = getPlayerRoom(playerId);
+    if (!room) return;
+
+    const player = room.players.get(playerId);
     if (player) {
         player.isReady = isReady;
-        log(`Player ${player.name} is ${isReady ? 'READY' : 'not ready'}`, 'PLAYER');
-        broadcastLobbyUpdate();
+        log(`Player ${player.name} is ${isReady ? 'READY' : 'not ready'} in room ${room.id}`, 'PLAYER');
+        broadcastLobbyUpdateToRoom(room);
 
         // Check if all players are ready to start
-        if (checkAllReady() && GameState.players.size >= 1) {
-            log('All players ready! Starting game in 3 seconds...', 'GAME');
-            broadcast({ type: 'lobbyCountdown', seconds: 3 });
-
-            setTimeout(() => {
-                if (checkAllReady() && GameState.isInLobby) {
-                    startMultiplayerGame();
-                }
-            }, 3000);
+        if (checkAllReadyInRoom(room) && room.players.size >= 1 && !room.countdownTimer) {
+            startLobbyCountdownInRoom(room);
+        } else if (!checkAllReadyInRoom(room) && room.countdownTimer) {
+            // Cancel countdown if someone un-readies
+            cancelLobbyCountdownInRoom(room);
         }
     }
 }
 
-function startMultiplayerGame() {
-    GameState.isInLobby = false;
-    GameState.isRunning = true;
+function startLobbyCountdownInRoom(room) {
+    if (!room || room.countdownTimer) return; // Already counting down
+
+    log(`All players ready in room ${room.id}! Starting countdown...`, 'GAME');
+    room.countdownSeconds = 3;
+
+    // Send initial countdown
+    broadcastToRoom(room, { type: 'lobbyCountdown', seconds: room.countdownSeconds });
+
+    room.countdownTimer = setInterval(() => {
+        room.countdownSeconds--;
+
+        if (room.countdownSeconds > 0) {
+            broadcastToRoom(room, { type: 'lobbyCountdown', seconds: room.countdownSeconds });
+        } else {
+            // Countdown finished
+            clearInterval(room.countdownTimer);
+            room.countdownTimer = null;
+
+            if (checkAllReadyInRoom(room) && room.isInLobby) {
+                startMultiplayerGameInRoom(room);
+            }
+        }
+    }, 1000);
+}
+
+function cancelLobbyCountdownInRoom(room) {
+    if (room && room.countdownTimer) {
+        clearInterval(room.countdownTimer);
+        room.countdownTimer = null;
+        log(`Countdown cancelled in room ${room.id} - player unreadied`, 'GAME');
+        broadcastToRoom(room, { type: 'lobbyCountdown', seconds: 0, cancelled: true });
+    }
+}
+
+function startMultiplayerGameInRoom(room) {
+    if (!room) return;
+
+    room.isInLobby = false;
+    room.isRunning = true;
 
     // Reset all players
-    GameState.players.forEach(player => {
+    room.players.forEach(player => {
         player.health = 100;
         player.isAlive = true;
         player.position = { x: (Math.random() - 0.5) * 10, y: 1.8, z: 10 + Math.random() * 5 };
     });
 
-    broadcast({
+    broadcastToRoom(room, {
         type: 'gameStart',
-        players: getPlayersData()
+        players: getPlayersDataFromRoom(room)
     });
 
-    log('Multiplayer game started!', 'SUCCESS');
+    log(`Multiplayer game started in room ${room.id}!`, 'SUCCESS');
+    startWaveInRoom(room);
+}
+
+// Legacy functions for backwards compatibility
+function startLobbyCountdown() {
+    if (gameRooms.size > 0) {
+        const room = gameRooms.values().next().value;
+        startLobbyCountdownInRoom(room);
+    }
+}
+
+function cancelLobbyCountdown() {
+    if (gameRooms.size > 0) {
+        const room = gameRooms.values().next().value;
+        cancelLobbyCountdownInRoom(room);
+    }
+}
+
+function startMultiplayerGame() {
+    if (gameRooms.size > 0) {
+        const room = gameRooms.values().next().value;
+        startMultiplayerGameInRoom(room);
+    }
+}
+
+function getPlayersDataFromRoom(room) {
+    if (!room) return [];
+    const data = [];
+    room.players.forEach((player, id) => {
+        data.push({
+            id: player.id,
+            name: player.name,
+            position: player.position,
+            rotation: player.rotation,
+            health: player.health,
+            isAlive: player.isAlive,
+            isReady: player.isReady,
+            color: player.color,
+            cosmetic: player.cosmetic
+        });
+    });
+    return data;
+}
+
+function startWaveInRoom(room) {
+    if (!room) return;
+    // This will be called by the existing wave system
+    // For now, delegate to the global startWave
+    // In a full refactor, all wave logic would be room-specific
     startWave();
 }
 
@@ -900,13 +1130,15 @@ function startMultiplayerGame() {
 wss.on('connection', (ws) => {
     const playerId = uuidv4();
     const player = createPlayer(ws, playerId);
+    const room = getPlayerRoom(playerId);
 
-    log(`New WebSocket connection from player ${playerId}`, 'INFO');
+    log(`New WebSocket connection from player ${playerId} in room ${room ? room.id : 'unknown'}`, 'INFO');
 
     // Send initial lobby/game state to new player
     const initMessage = {
         type: 'init',
         playerId: playerId,
+        roomId: room ? room.id : null,
         player: {
             id: player.id,
             name: player.name,
@@ -919,39 +1151,41 @@ wss.on('connection', (ws) => {
             cosmetic: player.cosmetic
         },
         gameState: {
-            isRunning: GameState.isRunning,
-            isInLobby: GameState.isInLobby,
-            wave: GameState.wave,
-            zombiesRemaining: GameState.zombiesRemaining,
-            totalKills: GameState.totalKills,
-            totalScore: GameState.totalScore
+            isRunning: room ? room.isRunning : false,
+            isInLobby: room ? room.isInLobby : true,
+            wave: room ? room.wave : 1,
+            zombiesRemaining: room ? room.zombiesRemaining : 0,
+            totalKills: room ? room.totalKills : 0,
+            totalScore: room ? room.totalScore : 0
         },
-        players: getPlayersData().filter(p => p.id !== playerId),
-        zombies: getZombiesData(),
-        pickups: getPickupsData()
+        players: room ? getPlayersDataFromRoom(room).filter(p => p.id !== playerId) : [],
+        zombies: room ? getZombiesDataFromRoom(room) : [],
+        pickups: room ? getPickupsDataFromRoom(room) : []
     };
 
-    log(`Sending init to ${playerId}: inLobby=${GameState.isInLobby}, gameRunning=${GameState.isRunning}`, 'INFO');
+    log(`Sending init to ${playerId}: inLobby=${room ? room.isInLobby : true}, gameRunning=${room ? room.isRunning : false}`, 'INFO');
     ws.send(JSON.stringify(initMessage));
 
-    // Broadcast new player to others (lobby update)
-    broadcastLobbyUpdate();
+    // Broadcast new player to others in the same room
+    if (room) {
+        broadcastLobbyUpdateToRoom(room);
 
-    // Also send playerJoined for game compatibility
-    broadcast({
-        type: 'playerJoined',
-        player: {
-            id: player.id,
-            name: player.name,
-            position: player.position,
-            rotation: player.rotation,
-            health: player.health,
-            isAlive: player.isAlive,
-            isReady: player.isReady,
-            color: player.color,
-            cosmetic: player.cosmetic
-        }
-    }, playerId);
+        // Also send playerJoined for game compatibility
+        broadcastToRoom(room, {
+            type: 'playerJoined',
+            player: {
+                id: player.id,
+                name: player.name,
+                position: player.position,
+                rotation: player.rotation,
+                health: player.health,
+                isAlive: player.isAlive,
+                isReady: player.isReady,
+                color: player.color,
+                cosmetic: player.cosmetic
+            }
+        }, playerId);
+    }
 
     ws.on('message', (data) => {
         try {
@@ -971,6 +1205,39 @@ wss.on('connection', (ws) => {
         log(`WebSocket error for ${playerId}: ${error.message}`, 'ERROR');
     });
 });
+
+// Helper functions to get room-specific data
+function getZombiesDataFromRoom(room) {
+    if (!room) return [];
+    const data = [];
+    room.zombies.forEach((zombie, id) => {
+        if (zombie.isAlive) {
+            data.push({
+                id: zombie.id,
+                type: zombie.type,
+                position: zombie.position,
+                rotation: zombie.rotation,
+                health: zombie.health,
+                maxHealth: zombie.maxHealth,
+                scale: zombie.scale
+            });
+        }
+    });
+    return data;
+}
+
+function getPickupsDataFromRoom(room) {
+    if (!room) return [];
+    const data = [];
+    room.pickups.forEach((pickup, id) => {
+        data.push({
+            id: pickup.id,
+            type: pickup.type,
+            position: pickup.position
+        });
+    });
+    return data;
+}
 
 // ==================== INPUT VALIDATION ====================
 function isValidNumber(val, min = -Infinity, max = Infinity) {
@@ -997,7 +1264,10 @@ function sanitizeString(str, maxLength = 50) {
 }
 
 function handleMessage(playerId, message) {
-    const player = GameState.players.get(playerId);
+    const room = getPlayerRoom(playerId);
+    if (!room) return;
+
+    const player = room.players.get(playerId);
     if (!player) return;
 
     // Validate message structure
@@ -1030,8 +1300,8 @@ function handleMessage(playerId, message) {
             }
             player.lastUpdate = Date.now();
 
-            // Broadcast to other players
-            broadcast({
+            // Broadcast to other players in the same room
+            broadcastToRoom(room, {
                 type: 'playerUpdate',
                 playerId: playerId,
                 position: player.position,
@@ -1041,9 +1311,9 @@ function handleMessage(playerId, message) {
 
         case 'shoot':
             // Validate shooting data
-            if (!GameState.isRunning || !player.isAlive) break;
+            if (!room.isRunning || !player.isAlive) break;
 
-            broadcast({
+            broadcastToRoom(room, {
                 type: 'playerShoot',
                 playerId: playerId,
                 origin: message.origin,
@@ -1064,16 +1334,16 @@ function handleMessage(playerId, message) {
             break;
 
         case 'requestStart':
-            if (!GameState.isRunning && GameState.players.size > 0) {
+            if (!room.isRunning && room.players.size > 0) {
                 startGame();
             }
             break;
 
         case 'requestReset':
-            if (GameState.isGameOver || !GameState.isRunning) {
+            if (room.isGameOver || !room.isRunning) {
                 resetGame();
                 setTimeout(() => {
-                    if (GameState.players.size > 0) {
+                    if (room.players.size > 0) {
                         startGame();
                     }
                 }, 1000);
@@ -1084,7 +1354,7 @@ function handleMessage(playerId, message) {
             if (message.text) {
                 const sanitizedText = sanitizeString(message.text, 200);
                 if (sanitizedText.length > 0) {
-                    broadcast({
+                    broadcastToRoom(room, {
                         type: 'chat',
                         playerId: playerId,
                         playerName: player.name,
@@ -1100,7 +1370,7 @@ function handleMessage(playerId, message) {
                 player.name = sanitizeString(message.name, 20) || oldName;
                 if (player.name !== oldName) {
                     log(`Player ${oldName} changed name to ${player.name}`, 'PLAYER');
-                    broadcast({
+                    broadcastToRoom(room, {
                         type: 'playerNameChange',
                         playerId: playerId,
                         name: player.name
@@ -1117,7 +1387,7 @@ function handleMessage(playerId, message) {
                     player.cosmetic = message.cosmetic;
                     if (player.cosmetic !== oldCosmetic) {
                         log(`Player ${player.name} changed cosmetic to ${player.cosmetic}`, 'PLAYER');
-                        broadcast({
+                        broadcastToRoom(room, {
                             type: 'playerCosmeticChange',
                             playerId: playerId,
                             cosmetic: player.cosmetic
@@ -1143,21 +1413,25 @@ function handleMessage(playerId, message) {
 
 // ==================== GAME LOOP ====================
 setInterval(() => {
-    if (GameState.isRunning && !GameState.isPaused) {
-        updateZombies();
+    // Process all active game rooms
+    gameRooms.forEach((room, roomId) => {
+        if (room.isRunning && !room.isPaused) {
+            // For legacy compatibility, set the current room for global functions
+            updateZombies();
 
-        // Send periodic state sync
-        broadcast({
-            type: 'sync',
-            zombies: getZombiesData(),
-            gameState: {
-                wave: GameState.wave,
-                zombiesRemaining: GameState.zombiesRemaining,
-                totalKills: GameState.totalKills,
-                totalScore: GameState.totalScore
-            }
-        });
-    }
+            // Send periodic state sync to room
+            broadcastToRoom(room, {
+                type: 'sync',
+                zombies: getZombiesData(),
+                gameState: {
+                    wave: room.wave,
+                    zombiesRemaining: room.zombiesRemaining,
+                    totalKills: room.totalKills,
+                    totalScore: room.totalScore
+                }
+            });
+        }
+    });
 }, 1000 / CONFIG.tickRate);
 
 // ==================== START SERVER ====================

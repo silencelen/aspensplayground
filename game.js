@@ -413,17 +413,22 @@ const SpectatorMode = {
             return;
         }
 
-        // Position camera behind and above the spectated player
-        const targetPos = mesh.position.clone();
-        targetPos.y = CONFIG.player.height;
+        // Position camera exactly at the spectated player's eye position
+        const targetPos = new THREE.Vector3(
+            mesh.position.x,
+            CONFIG.player.height, // Eye height
+            mesh.position.z
+        );
 
-        // Smooth camera follow
-        camera.position.lerp(targetPos, 0.1);
+        // Instant position update for first-person feel
+        camera.position.copy(targetPos);
 
-        // Match player rotation if available
+        // Match player rotation exactly for first-person view
         if (playerData.rotation) {
+            camera.rotation.order = 'YXZ';
             camera.rotation.y = playerData.rotation.y || 0;
             camera.rotation.x = playerData.rotation.x || 0;
+            camera.rotation.z = 0;
         }
     },
 
@@ -435,17 +440,18 @@ const SpectatorMode = {
             ui.id = 'spectator-ui';
             ui.style.cssText = `
                 position: fixed;
-                top: 50%;
+                bottom: 20px;
                 left: 50%;
-                transform: translate(-50%, -50%);
-                background: rgba(0, 0, 0, 0.8);
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.7);
                 color: #fff;
-                padding: 20px 40px;
-                border-radius: 10px;
+                padding: 12px 30px;
+                border-radius: 8px;
                 font-family: 'Creepster', cursive;
                 text-align: center;
                 z-index: 1000;
                 border: 2px solid #ff4444;
+                pointer-events: none;
             `;
             document.body.appendChild(ui);
         }
@@ -463,14 +469,10 @@ const SpectatorMode = {
         const alivePlayers = this.getAlivePlayers();
 
         ui.innerHTML = `
-            <div style="color: #ff4444; font-size: 1.5rem; margin-bottom: 10px;">YOU DIED</div>
-            <div style="color: #ffcc00; font-size: 1.2rem;">Spectating: ${playerName}</div>
-            <div style="color: #aaa; font-size: 0.9rem; margin-top: 10px;">
-                [Q] Previous Player | [E] Next Player
-            </div>
-            <div style="color: #888; font-size: 0.8rem; margin-top: 5px;">
-                ${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining
-            </div>
+            <span style="color: #ff4444;">SPECTATING</span>
+            <span style="color: #ffcc00; margin: 0 10px;">${playerName}</span>
+            <span style="color: #888;">(${alivePlayers.length} alive)</span>
+            <span style="color: #666; margin-left: 15px;">[Q/E] Switch</span>
         `;
     },
 
@@ -3584,7 +3586,11 @@ function handleLobbyUpdate(message) {
 }
 
 function handleLobbyCountdown(message) {
-    document.getElementById('lobby-status').textContent = `Game starting in ${message.seconds}...`;
+    if (message.cancelled) {
+        document.getElementById('lobby-status').textContent = 'Countdown cancelled - waiting for players';
+    } else if (message.seconds > 0) {
+        document.getElementById('lobby-status').textContent = `Game starting in ${message.seconds}...`;
+    }
 }
 
 function updateLobbyPlayerList() {
@@ -3659,7 +3665,7 @@ function handlePlayerUpdate(message) {
 
         // Set interpolation targets (mesh will smoothly move toward these)
         Interpolation.updateEntity(playerData, message.position, message.rotation.y);
-        playerData.targetHeadRotation = message.rotation.x * 0.5;
+        playerData.targetHeadRotation = message.rotation.x; // Full vertical aim range
     }
 }
 
@@ -3668,13 +3674,36 @@ function updateRemotePlayerPositions() {
     remotePlayers.forEach((playerData, playerId) => {
         const mesh = remotePlayerMeshes.get(playerId);
         if (mesh && playerData.targetPosition) {
-            // Smooth position interpolation
+            // Smooth position interpolation and body rotation (rotation.y)
             Interpolation.applyInterpolation(playerData, mesh);
 
-            // Smooth head rotation
+            // Get the vertical aim pitch (rotation.x)
+            const targetPitch = playerData.targetHeadRotation !== undefined ? playerData.targetHeadRotation : 0;
+
+            // Smooth head rotation (pitch)
             const head = mesh.children.find(c => c.userData.isHead);
-            if (head && playerData.targetHeadRotation !== undefined) {
-                head.rotation.x = Interpolation.lerp(head.rotation.x, playerData.targetHeadRotation, 0.2);
+            if (head) {
+                head.rotation.x = Interpolation.lerp(head.rotation.x, targetPitch, 0.2);
+            }
+
+            // Arms follow head pitch (but more subtle)
+            const armGroup = mesh.children.find(c => c.userData.isArms);
+            if (armGroup) {
+                // Apply pitch to the entire arm group
+                const armPitch = targetPitch * 0.7; // Arms pitch slightly less than head
+                armGroup.rotation.x = Interpolation.lerp(armGroup.rotation.x || 0, armPitch, 0.2);
+            }
+
+            // Weapon follows head pitch
+            const weaponGroup = mesh.children.find(c => c.userData.isWeapon);
+            if (weaponGroup) {
+                // Weapon pitches with the player's aim
+                const weaponPitch = targetPitch * 0.8;
+                weaponGroup.rotation.x = Interpolation.lerp(
+                    weaponGroup.rotation.x || -0.2,
+                    -0.2 + weaponPitch, // Base rotation + pitch
+                    0.2
+                );
             }
         }
     });
@@ -12511,13 +12540,70 @@ async function quitToMenu() {
     GameState.isRunning = false;
     GameState.isGameOver = false;
 
-    if (GameState.mode === 'singleplayer') {
-        resetSinglePlayerGame();
-    } else if (socket) {
-        socket.close();
+    // Exit spectator mode if active
+    if (SpectatorMode.isSpectating) {
+        SpectatorMode.exit();
     }
 
+    // Stop ambient sounds
+    stopAmbientSounds();
+
+    // Clear all zombies
+    zombies.forEach((zombie) => {
+        if (zombie.mesh) scene.remove(zombie.mesh);
+    });
+    zombies.clear();
+
+    // Clear optimization systems
+    ZombiePool.clear();
+    SpatialGrid.clear();
+
+    // Clear pickups
+    pickups.forEach((pickup) => {
+        if (pickup.mesh) scene.remove(pickup.mesh);
+    });
+    pickups.clear();
+
+    // Clear remote players (multiplayer)
+    remotePlayers.clear();
+    remotePlayerMeshes.forEach((mesh) => {
+        if (mesh) scene.remove(mesh);
+    });
+    remotePlayerMeshes.clear();
+
+    // Clear spawn timer
+    if (GameState.spawnTimer) {
+        clearInterval(GameState.spawnTimer);
+        GameState.spawnTimer = null;
+    }
+
+    if (GameState.mode === 'singleplayer') {
+        resetDestructibles();
+    } else if (socket) {
+        socket.close();
+        socket = null;
+    }
+
+    // Reset player state
+    playerState.health = CONFIG.player.maxHealth;
+    playerState.isAlive = true;
+    playerState.score = 0;
+    playerState.ammo = CONFIG.player.startAmmo;
+    playerState.reserveAmmo = CONFIG.player.reserveAmmo;
+
+    // Reset game state
+    GameState.wave = 1;
+    GameState.totalKills = 0;
+    GameState.totalScore = 0;
+    GameState.zombiesRemaining = 0;
+    GameState.zombiesSpawned = 0;
     GameState.mode = null;
+    GameState.isInLobby = false;
+    GameState.isReady = false;
+    LobbyState.players.clear();
+
+    // Reset player position
+    player.position.set(0, 0, 0);
 
     document.getElementById('pause-screen').style.display = 'none';
     document.getElementById('game-over-screen').style.display = 'none';
