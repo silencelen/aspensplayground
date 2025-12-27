@@ -297,7 +297,9 @@ const Interpolation = {
         mesh.position.z = this.lerp(mesh.position.z, entity.targetPosition.z, this.lerpFactor);
 
         if (entity.targetRotation !== undefined) {
-            mesh.rotation.y = this.lerpAngle(mesh.rotation.y, entity.targetRotation, this.rotLerpFactor);
+            // Add PI to flip model 180 degrees to face same direction as camera
+            const targetWithOffset = entity.targetRotation + Math.PI;
+            mesh.rotation.y = this.lerpAngle(mesh.rotation.y, targetWithOffset, this.rotLerpFactor);
         }
     }
 };
