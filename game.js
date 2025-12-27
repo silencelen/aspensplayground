@@ -1146,6 +1146,9 @@ const WeaponUpgrades = {
         document.getElementById('shop-continue-btn').disabled = false;
         GameState.isPaused = false;
 
+        // Prevent pointer lock loss from triggering pause during transition
+        inShopTransition = true;
+
         // Re-lock cursor for gameplay
         const canvas = document.querySelector('canvas');
         if (canvas) {
@@ -1158,6 +1161,11 @@ const WeaponUpgrades = {
         if (GameState.mode === 'singleplayer') {
             startSinglePlayerWave();
         }
+
+        // Clear transition flag after pointer lock events have settled
+        setTimeout(() => {
+            inShopTransition = false;
+        }, 500);
     },
 
     // Handle multiplayer shop sync message
@@ -7859,6 +7867,9 @@ function onMouseUp(event) {
     }
 }
 
+// Track if we're in a transition where pointer lock loss shouldn't pause
+let inShopTransition = false;
+
 function onPointerLockChange() {
     pointerLocked = document.pointerLockElement === document.body;
 
@@ -7867,7 +7878,8 @@ function onPointerLockChange() {
 
     // In multiplayer, don't auto-pause if pointer lock fails (might be initial request)
     // Only pause if we HAD pointer lock and lost it (user pressed ESC)
-    if (!isMobileDevice && !pointerLocked && GameState.isRunning && !GameState.isPaused && !GameState.isGameOver) {
+    // Also don't pause during shop transition
+    if (!isMobileDevice && !pointerLocked && GameState.isRunning && !GameState.isPaused && !GameState.isGameOver && !inShopTransition) {
         // Only pause in singleplayer, or if we explicitly had pointer lock before
         if (GameState.mode === 'singleplayer') {
             togglePause();
@@ -12585,6 +12597,7 @@ async function quitToMenu() {
     WeaponUpgrades.shopOpen = false;
     WeaponUpgrades.localPlayerReady = false;
     WeaponUpgrades.playersReady.clear();
+    inShopTransition = false;
     document.getElementById('upgrade-shop').style.display = 'none';
 
     if (GameState.mode === 'singleplayer') {
