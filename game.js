@@ -4931,6 +4931,82 @@ function createCapsule(radius, height, radialSegments) {
     return group;
 }
 
+// ==================== ZOMBIE HEALTH BAR SYSTEM ====================
+function createZombieHealthBar(scale = 1) {
+    const group = new THREE.Group();
+    group.name = 'healthBar';
+
+    // Background bar (dark)
+    const bgGeo = new THREE.PlaneGeometry(0.8 * scale, 0.1 * scale);
+    const bgMat = new THREE.MeshBasicMaterial({
+        color: 0x222222,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        depthTest: false
+    });
+    const bgBar = new THREE.Mesh(bgGeo, bgMat);
+    bgBar.renderOrder = 999;
+    group.add(bgBar);
+
+    // Health bar (green/yellow/red based on health)
+    const healthGeo = new THREE.PlaneGeometry(0.76 * scale, 0.06 * scale);
+    const healthMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthTest: false
+    });
+    const healthBar = new THREE.Mesh(healthGeo, healthMat);
+    healthBar.renderOrder = 1000;
+    healthBar.name = 'healthFill';
+    group.add(healthBar);
+
+    // Border
+    const borderGeo = new THREE.EdgesGeometry(bgGeo);
+    const borderMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.9 });
+    const border = new THREE.LineSegments(borderGeo, borderMat);
+    border.renderOrder = 1001;
+    group.add(border);
+
+    group.visible = false; // Hidden until damaged
+    return group;
+}
+
+function updateZombieHealthBar(zombie) {
+    if (!zombie.mesh || !zombie.mesh.userData.healthBar) return;
+
+    const healthBar = zombie.mesh.userData.healthBar;
+    const healthFill = healthBar.getObjectByName('healthFill');
+    if (!healthFill) return;
+
+    const healthPercent = zombie.health / zombie.maxHealth;
+
+    // Show health bar only when damaged
+    healthBar.visible = healthPercent < 1 && zombie.isAlive;
+
+    if (!healthBar.visible) return;
+
+    // Update fill width and position (scale from left)
+    healthFill.scale.x = Math.max(0.01, healthPercent);
+    healthFill.position.x = -0.38 * (1 - healthPercent) * (zombie.scale || 1);
+
+    // Color based on health: green -> yellow -> red
+    if (healthPercent > 0.6) {
+        healthFill.material.color.setHex(0x00ff00); // Green
+    } else if (healthPercent > 0.3) {
+        healthFill.material.color.setHex(0xffff00); // Yellow
+    } else {
+        healthFill.material.color.setHex(0xff0000); // Red
+    }
+
+    // Billboard: face camera
+    if (camera) {
+        healthBar.quaternion.copy(camera.quaternion);
+    }
+}
+
 // ==================== SKELETAL ZOMBIE SYSTEM ====================
 const ZombieSkeleton = {
     // Create a complete skeletal zombie with bones and animation support
@@ -5269,6 +5345,13 @@ const ZombieSkeleton = {
             deathProgress: 0
         };
 
+        // Add health bar above zombie head
+        const healthBar = createZombieHealthBar(scale);
+        const headHeight = zombieData.type === 'tank' ? 2.4 : (zombieData.type === 'boss' ? 2.8 : 2.0);
+        healthBar.position.y = headHeight * scale;
+        group.add(healthBar);
+        group.userData.healthBar = healthBar;
+
         // Position in world
         group.position.set(zombieData.position.x, 0, zombieData.position.z);
         group.rotation.y = zombieData.rotation || 0;
@@ -5344,6 +5427,9 @@ const ZombieSkeleton = {
         if (zombie.rotation !== undefined) {
             zombie.mesh.rotation.y = zombie.rotation;
         }
+
+        // Update health bar (billboard towards camera, show when damaged)
+        updateZombieHealthBar(zombie);
     }
 };
 
