@@ -2864,37 +2864,37 @@
         </div>
 
         <!-- Bottom-left: Movement joystick -->
-        <div id="joystick-container">
-            <div id="joystick-base">
+        <div id="joystick-container" role="group" aria-label="Movement controls">
+            <div id="joystick-base" role="slider" aria-label="Movement joystick" aria-valuetext="Use to move character" tabindex="0">
                 <div id="joystick-stick"></div>
             </div>
         </div>
 
         <!-- Sprint button - above joystick -->
-        <button id="mobile-sprint" class="mobile-btn sprint-btn">SPRINT</button>
+        <button id="mobile-sprint" class="mobile-btn sprint-btn" aria-label="Toggle sprint" aria-pressed="false">SPRINT</button>
 
         <!-- Bottom-right: Action buttons -->
-        <div id="mobile-buttons">
-            <button id="mobile-shoot" class="mobile-btn shoot-btn">FIRE</button>
+        <div id="mobile-buttons" role="group" aria-label="Action buttons">
+            <button id="mobile-shoot" class="mobile-btn shoot-btn" aria-label="Fire weapon">FIRE</button>
             <div id="mobile-secondary-buttons">
-                <button id="mobile-reload" class="mobile-btn secondary-btn">R</button>
-                <button id="mobile-jump" class="mobile-btn secondary-btn">JUMP</button>
-                <button id="mobile-interact" class="mobile-btn secondary-btn interact-btn">E</button>
+                <button id="mobile-reload" class="mobile-btn secondary-btn" aria-label="Reload weapon">R</button>
+                <button id="mobile-jump" class="mobile-btn secondary-btn" aria-label="Jump">JUMP</button>
+                <button id="mobile-interact" class="mobile-btn secondary-btn interact-btn" aria-label="Interact with object">E</button>
             </div>
         </div>
 
         <!-- Bottom-center: Weapon switching -->
-        <div id="mobile-weapons">
-            <button class="mobile-weapon-btn active" data-weapon="0">1</button>
-            <button class="mobile-weapon-btn" data-weapon="1">2</button>
-            <button class="mobile-weapon-btn" data-weapon="2">3</button>
-            <button class="mobile-weapon-btn" data-weapon="3">4</button>
-            <button class="mobile-weapon-btn" data-weapon="4">5</button>
-            <button id="mobile-grenade" class="mobile-weapon-btn grenade-btn">G</button>
+        <div id="mobile-weapons" role="group" aria-label="Weapon selection">
+            <button class="mobile-weapon-btn active" data-weapon="0" aria-label="Select weapon 1 - Pistol" aria-pressed="true">1</button>
+            <button class="mobile-weapon-btn" data-weapon="1" aria-label="Select weapon 2 - Shotgun" aria-pressed="false">2</button>
+            <button class="mobile-weapon-btn" data-weapon="2" aria-label="Select weapon 3 - SMG" aria-pressed="false">3</button>
+            <button class="mobile-weapon-btn" data-weapon="3" aria-label="Select weapon 4 - Assault Rifle" aria-pressed="false">4</button>
+            <button class="mobile-weapon-btn" data-weapon="4" aria-label="Select weapon 5 - Sniper" aria-pressed="false">5</button>
+            <button id="mobile-grenade" class="mobile-weapon-btn grenade-btn" aria-label="Throw grenade">G</button>
         </div>
 
         <!-- Look area for camera control -->
-        <div id="mobile-look-area"></div>
+        <div id="mobile-look-area" role="application" aria-label="Camera look control - drag to look around"></div>
     </div>
 
     <style>
@@ -3075,8 +3075,9 @@
 
         .sprint-btn {
             width: 70px !important;
-            height: 36px !important;
-            border-radius: 18px !important;
+            height: 44px !important;
+            min-height: 44px !important;
+            border-radius: 22px !important;
             background: rgba(0, 150, 255, 0.6) !important;
             border: 2px solid rgba(100, 180, 255, 0.8) !important;
             font-size: 10px !important;
