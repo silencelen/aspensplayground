@@ -7438,25 +7438,52 @@ const mobileInput = {
 };
 
 // ==================== CONTROLS ====================
+let controlsInitialized = false;
+
+// Named wheel handler for proper cleanup
+function onWheel(e) {
+    if (!pointerLocked || !GameState.isRunning || weapon.isReloading) return;
+    e.preventDefault();
+    cycleWeapon(e.deltaY > 0 ? 1 : -1);
+}
+
 function initControls() {
+    // Prevent double-initialization
+    if (controlsInitialized) return;
+    controlsInitialized = true;
+
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mouseup', onMouseUp);
     document.addEventListener('pointerlockchange', onPointerLockChange);
-
-    // Scroll wheel weapon switching
-    document.addEventListener('wheel', (e) => {
-        if (!pointerLocked || !GameState.isRunning || weapon.isReloading) return;
-        e.preventDefault();
-        cycleWeapon(e.deltaY > 0 ? 1 : -1);
-    }, { passive: false });
+    document.addEventListener('wheel', onWheel, { passive: false });
 
     // Initialize mobile controls if on mobile device
     if (isMobile) {
         initMobileControls();
     }
+}
+
+function cleanupControls() {
+    if (!controlsInitialized) return;
+    controlsInitialized = false;
+
+    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keyup', onKeyUp);
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mousedown', onMouseDown);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('pointerlockchange', onPointerLockChange);
+    document.removeEventListener('wheel', onWheel);
+
+    // Reset control states
+    keys.forward = false;
+    keys.backward = false;
+    keys.left = false;
+    keys.right = false;
+    keys.sprint = false;
 }
 
 function initMobileControls() {
@@ -12737,11 +12764,15 @@ async function quitToMenu() {
     // Stop ambient sounds
     stopAmbientSounds();
 
+    // Clean up event listeners
+    cleanupControls();
+
     // Clear all zombies
     zombies.forEach((zombie) => {
         if (zombie.mesh) scene.remove(zombie.mesh);
     });
     zombies.clear();
+    invalidateZombieMeshCache();
 
     // Clear optimization systems
     ZombiePool.clear();
