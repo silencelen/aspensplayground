@@ -399,6 +399,20 @@
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
         }
 
+        /* Focus styles for accessibility - WCAG 2.4.7 */
+        .menu-button:focus,
+        .menu-button:focus-visible {
+            outline: 3px solid #ffff00;
+            outline-offset: 3px;
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.8), 0 0 0 6px rgba(255, 255, 0, 0.3);
+        }
+
+        .menu-button.secondary:focus,
+        .menu-button.secondary:focus-visible {
+            outline: 3px solid #ffff00;
+            outline-offset: 3px;
+        }
+
         .mode-buttons {
             display: flex;
             gap: 20px;
@@ -720,6 +734,12 @@
             background: rgba(255, 68, 68, 0.2);
         }
 
+        .leaderboard-toggle:focus,
+        .leaderboard-toggle:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
+        }
+
         /* Menu buttons container - bottom right stacked */
         .menu-buttons-corner {
             position: absolute;
@@ -743,6 +763,12 @@
         .cosmetics-button:hover {
             background: linear-gradient(135deg, #8b00ff, #bf5fff);
             box-shadow: 0 0 20px rgba(155, 48, 255, 0.5);
+        }
+
+        .cosmetics-button:focus,
+        .cosmetics-button:focus-visible {
+            outline: 3px solid #ffff00;
+            outline-offset: 3px;
         }
 
         /* Cosmetics Screen */
@@ -787,6 +813,12 @@
             border-color: #9b30ff;
             transform: translateY(-5px);
             box-shadow: 0 10px 30px rgba(155, 48, 255, 0.3);
+        }
+
+        .cosmetic-option:focus,
+        .cosmetic-option:focus-visible {
+            outline: 3px solid #ffff00;
+            outline-offset: 3px;
         }
 
         .cosmetic-option.selected {
@@ -976,6 +1008,12 @@
             cursor: not-allowed;
         }
 
+        .upgrade-btn:focus,
+        .upgrade-btn:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
+        }
+
         .upgrade-btn.maxed {
             background: linear-gradient(135deg, #4a4a1a, #6a6a2a);
             border-color: #8a8a3a;
@@ -991,6 +1029,12 @@
         #shop-continue-btn:hover {
             background: linear-gradient(135deg, #2a2a6a, #3a3a8a);
             box-shadow: 0 0 15px rgba(74, 74, 255, 0.5);
+        }
+
+        #shop-continue-btn:focus,
+        #shop-continue-btn:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
         }
 
         .your-rank {
@@ -1217,6 +1261,12 @@
             border: none;
         }
 
+        .settings-slider:focus,
+        .settings-slider:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
+        }
+
         .settings-select {
             background: #222;
             color: #fff;
@@ -1227,11 +1277,24 @@
             cursor: pointer;
         }
 
+        .settings-select:focus,
+        .settings-select:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
+            border-color: #ff4444;
+        }
+
         .settings-checkbox {
             width: 20px;
             height: 20px;
             cursor: pointer;
             accent-color: #ff4444;
+        }
+
+        .settings-checkbox:focus,
+        .settings-checkbox:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
         }
 
         .settings-buttons {
@@ -1273,6 +1336,14 @@
             color: #fff;
         }
 
+        .settings-btn-primary:focus,
+        .settings-btn-primary:focus-visible,
+        .settings-btn-secondary:focus,
+        .settings-btn-secondary:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
+        }
+
         #settings-button {
             position: absolute;
             top: 10px;
@@ -1290,6 +1361,12 @@
 
         #settings-button:hover {
             background: rgba(255, 68, 68, 0.2);
+        }
+
+        #settings-button:focus,
+        #settings-button:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
         }
 
         #fps-display {
