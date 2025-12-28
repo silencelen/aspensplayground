@@ -2127,6 +2127,7 @@ function init() {
         initAchievementsScreen();
         initLeaderboard();
         initFPSCounter();
+        initNetworkStatus();
         loadSelectedCosmetic();
         WeaponUpgrades.init();
         Achievements.init();
@@ -2141,6 +2142,43 @@ function init() {
         DebugLog.log(`Initialization error: ${error.message}`, 'error');
         console.error(error);
     }
+}
+
+// ==================== ONLINE/OFFLINE DETECTION ====================
+let isOnline = navigator.onLine;
+
+function initNetworkStatus() {
+    const offlineIndicator = document.getElementById('offline-indicator');
+
+    function updateOnlineStatus() {
+        isOnline = navigator.onLine;
+        if (offlineIndicator) {
+            offlineIndicator.style.display = isOnline ? 'none' : 'flex';
+        }
+
+        if (isOnline) {
+            DebugLog.log('Connection restored', 'success');
+        } else {
+            DebugLog.log('Connection lost - offline mode', 'warn');
+            // If in multiplayer and connection lost, show warning
+            if (isMultiplayer && socket) {
+                setElementDisplay('lobby-status', 'block');
+                const lobbyStatus = document.getElementById('lobby-status');
+                if (lobbyStatus) {
+                    lobbyStatus.textContent = 'Connection lost. Waiting for reconnection...';
+                }
+            }
+        }
+    }
+
+    // Set initial state
+    updateOnlineStatus();
+
+    // Listen for online/offline events
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    DebugLog.log('Network status monitoring initialized', 'info');
 }
 
 // FPS Counter

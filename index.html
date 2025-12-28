@@ -1416,6 +1416,35 @@
             display: none;
         }
 
+        #offline-indicator {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 68, 68, 0.9);
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-family: 'Arial', sans-serif;
+            font-weight: bold;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            animation: pulse-offline 2s infinite;
+        }
+
+        @keyframes pulse-offline {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .offline-icon {
+            font-size: 16px;
+        }
+
         #damage-overlay {
             position: fixed;
             top: 0;
@@ -1712,6 +1741,12 @@
 
     <!-- FPS Display -->
     <div id="fps-display">60 FPS</div>
+
+    <!-- Offline Indicator -->
+    <div id="offline-indicator" role="alert" aria-live="assertive" style="display: none;">
+        <span class="offline-icon">📡</span>
+        <span class="offline-text">OFFLINE</span>
+    </div>
 
     <!-- Settings Screen -->
     <div id="settings-screen" role="dialog" aria-labelledby="settings-title" aria-modal="true">
