@@ -3542,10 +3542,12 @@ function handleInit(message) {
     });
 
     // Add existing players to lobby state
-    message.players.forEach(p => {
-        LobbyState.players.set(p.id, p);
-        handlePlayerJoined(p);
-    });
+    if (Array.isArray(message.players)) {
+        message.players.forEach(p => {
+            LobbyState.players.set(p.id, p);
+            handlePlayerJoined(p);
+        });
+    }
 
     // Check if in lobby or game
     if (message.gameState.isInLobby) {
@@ -3582,14 +3584,18 @@ function handleInit(message) {
         GameState.zombiesRemaining = message.gameState.zombiesRemaining;
 
         // Add existing zombies
-        message.zombies.forEach(z => {
-            handleZombieSpawned(z);
-        });
+        if (Array.isArray(message.zombies)) {
+            message.zombies.forEach(z => {
+                handleZombieSpawned(z);
+            });
+        }
 
         // Add existing pickups
-        message.pickups.forEach(p => {
-            handlePickupSpawned(p);
-        });
+        if (Array.isArray(message.pickups)) {
+            message.pickups.forEach(p => {
+                handlePickupSpawned(p);
+            });
+        }
 
         DebugLog.log(`Joining existing game at Wave ${GameState.wave}`, 'game');
 
@@ -3615,6 +3621,7 @@ function handleInit(message) {
 function handleLobbyUpdate(message) {
     // Update lobby players
     LobbyState.players.clear();
+    if (!Array.isArray(message.players)) return;
     message.players.forEach(p => {
         LobbyState.players.set(p.id, p);
 
