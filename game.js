@@ -9226,7 +9226,10 @@ function createMuzzleFlash() {
     const flashLight = new THREE.PointLight(0xffaa00, 2, 8);
     flashLight.position.copy(flashPos);
     scene.add(flashLight);
-    setTimeout(() => scene.remove(flashLight), 50);
+    setTimeout(() => {
+        scene.remove(flashLight);
+        flashLight.dispose();  // Properly dispose to prevent memory leak
+    }, 50);
 }
 
 function createBulletTracer(origin, direction) {
@@ -9279,6 +9282,9 @@ function updateBullets(delta) {
         // Remove if traveled too far
         if (bullet.distanceTraveled >= bullet.maxDistance) {
             scene.remove(bullet.mesh);
+            // Properly dispose geometry and material to prevent memory leak
+            if (bullet.mesh.geometry) bullet.mesh.geometry.dispose();
+            if (bullet.mesh.material) bullet.mesh.material.dispose();
             bullets.splice(i, 1);
         }
     }
