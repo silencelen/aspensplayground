@@ -36,6 +36,103 @@ const ipConnections = new Map();  // IP -> Set of WebSocket connections
 const ipBans = new Map();         // IP -> ban expiry timestamp
 const clientMessageRates = new Map(); // playerId -> { count, windowStart }
 
+// ==================== MIN-HEAP PRIORITY QUEUE ====================
+// Binary heap for O(log n) A* pathfinding operations
+class MinHeap {
+    constructor() {
+        this.heap = [];
+        this.indices = new Map(); // key -> index for O(1) lookup
+    }
+
+    get length() {
+        return this.heap.length;
+    }
+
+    push(node) {
+        const key = `${node.x},${node.z}`;
+        this.heap.push(node);
+        this.indices.set(key, this.heap.length - 1);
+        this._bubbleUp(this.heap.length - 1);
+    }
+
+    pop() {
+        if (this.heap.length === 0) return null;
+        const min = this.heap[0];
+        const key = `${min.x},${min.z}`;
+        this.indices.delete(key);
+
+        if (this.heap.length === 1) {
+            this.heap.pop();
+            return min;
+        }
+
+        const last = this.heap.pop();
+        this.heap[0] = last;
+        this.indices.set(`${last.x},${last.z}`, 0);
+        this._bubbleDown(0);
+        return min;
+    }
+
+    has(x, z) {
+        return this.indices.has(`${x},${z}`);
+    }
+
+    updateF(x, z, newF) {
+        const key = `${x},${z}`;
+        const idx = this.indices.get(key);
+        if (idx === undefined) return false;
+
+        const oldF = this.heap[idx].f;
+        this.heap[idx].f = newF;
+
+        if (newF < oldF) {
+            this._bubbleUp(idx);
+        } else {
+            this._bubbleDown(idx);
+        }
+        return true;
+    }
+
+    _bubbleUp(idx) {
+        while (idx > 0) {
+            const parentIdx = Math.floor((idx - 1) / 2);
+            if (this.heap[parentIdx].f <= this.heap[idx].f) break;
+
+            this._swap(idx, parentIdx);
+            idx = parentIdx;
+        }
+    }
+
+    _bubbleDown(idx) {
+        const length = this.heap.length;
+        while (true) {
+            const leftIdx = 2 * idx + 1;
+            const rightIdx = 2 * idx + 2;
+            let smallest = idx;
+
+            if (leftIdx < length && this.heap[leftIdx].f < this.heap[smallest].f) {
+                smallest = leftIdx;
+            }
+            if (rightIdx < length && this.heap[rightIdx].f < this.heap[smallest].f) {
+                smallest = rightIdx;
+            }
+
+            if (smallest === idx) break;
+            this._swap(idx, smallest);
+            idx = smallest;
+        }
+    }
+
+    _swap(i, j) {
+        const nodeI = this.heap[i];
+        const nodeJ = this.heap[j];
+        this.heap[i] = nodeJ;
+        this.heap[j] = nodeI;
+        this.indices.set(`${nodeI.x},${nodeI.z}`, j);
+        this.indices.set(`${nodeJ.x},${nodeJ.z}`, i);
+    }
+}
+
 // ==================== SESSION AUTHENTICATION ====================
 // Game sessions - tracks active players and their server-verified stats
 const gameSessions = new Map();  // sessionToken -> { playerId, visitorId, score, kills, wave, startTime, isActive }
@@ -723,19 +820,17 @@ const Pathfinder = {
             if (!nearest) return null;
         }
 
-        // A* implementation
-        const openSet = [];
+        // A* implementation with MinHeap for O(log n) operations
+        const openSet = new MinHeap();
         const closedSet = new Set();
         const cameFrom = new Map();
         const gScore = new Map();
-        const fScore = new Map();
 
         const startKey = `${startGX},${startGZ}`;
-        const goalKey = `${goalGX},${goalGZ}`;
 
         gScore.set(startKey, 0);
-        fScore.set(startKey, this.heuristic(startGX, startGZ, goalGX, goalGZ));
-        openSet.push({ x: startGX, z: startGZ, f: fScore.get(startKey) });
+        const startF = this.heuristic(startGX, startGZ, goalGX, goalGZ);
+        openSet.push({ x: startGX, z: startGZ, f: startF });
 
         const neighbors = [
             { dx: 0, dz: -1, cost: 1 },
@@ -754,9 +849,8 @@ const Pathfinder = {
         while (openSet.length > 0 && iterations < maxIterations) {
             iterations++;
 
-            // Get node with lowest fScore
-            openSet.sort((a, b) => a.f - b.f);
-            const current = openSet.shift();
+            // Get node with lowest fScore - O(log n) with heap
+            const current = openSet.pop();
             const currentKey = `${current.x},${current.z}`;
 
             if (current.x === goalGX && current.z === goalGZ) {
@@ -788,11 +882,10 @@ const Pathfinder = {
                     cameFrom.set(neighborKey, current);
                     gScore.set(neighborKey, tentativeG);
                     const f = tentativeG + this.heuristic(nx, nz, goalGX, goalGZ);
-                    fScore.set(neighborKey, f);
 
-                    const existing = openSet.find(n => n.x === nx && n.z === nz);
-                    if (existing) {
-                        existing.f = f;
+                    // O(log n) update or insert
+                    if (openSet.has(nx, nz)) {
+                        openSet.updateF(nx, nz, f);
                     } else {
                         openSet.push({ x: nx, z: nz, f: f });
                     }
