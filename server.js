@@ -7,6 +7,7 @@ const http = require('http');
 const https = require('https');
 const net = require('net');
 const WebSocket = require('ws');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
@@ -33,6 +34,89 @@ const RATE_LIMIT = {
 const ipConnections = new Map();  // IP -> Set of WebSocket connections
 const ipBans = new Map();         // IP -> ban expiry timestamp
 const clientMessageRates = new Map(); // playerId -> { count, windowStart }
+
+// ==================== SESSION AUTHENTICATION ====================
+// Game sessions - tracks active players and their server-verified stats
+const gameSessions = new Map();  // sessionToken -> { playerId, visitorId, score, kills, wave, startTime, isActive }
+
+function generateSessionToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function createGameSession(playerId, visitorId = null) {
+    const token = generateSessionToken();
+    const session = {
+        playerId,
+        visitorId,  // Optional: for tracking returning visitors
+        token,
+        score: 0,
+        kills: 0,
+        wave: 1,
+        startTime: Date.now(),
+        isActive: true,
+        isInGame: false  // True once they've started playing (not just in lobby)
+    };
+    gameSessions.set(token, session);
+    return session;
+}
+
+function getSessionByToken(token) {
+    return gameSessions.get(token);
+}
+
+function getSessionByPlayerId(playerId) {
+    for (const [token, session] of gameSessions) {
+        if (session.playerId === playerId && session.isActive) {
+            return session;
+        }
+    }
+    return null;
+}
+
+function endGameSession(token) {
+    const session = gameSessions.get(token);
+    if (session) {
+        session.isActive = false;
+        // Keep session for 5 minutes for leaderboard submission
+        setTimeout(() => {
+            gameSessions.delete(token);
+        }, 5 * 60 * 1000);
+    }
+    return session;
+}
+
+// Server-side score tracking
+function addKillToSession(playerId, points, isHeadshot = false) {
+    const session = getSessionByPlayerId(playerId);
+    if (session && session.isActive) {
+        session.kills++;
+        session.score += points;
+        return true;
+    }
+    return false;
+}
+
+function updateSessionWave(playerId, wave) {
+    const session = getSessionByPlayerId(playerId);
+    if (session && session.isActive) {
+        session.wave = wave;
+    }
+}
+
+// Cleanup old sessions periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of gameSessions) {
+        // Remove inactive sessions older than 10 minutes
+        if (!session.isActive && now - session.startTime > 10 * 60 * 1000) {
+            gameSessions.delete(token);
+        }
+        // Remove abandoned active sessions (no activity for 30 minutes)
+        if (session.isActive && now - session.startTime > 30 * 60 * 1000) {
+            session.isActive = false;
+        }
+    }
+}, 60 * 1000); // Check every minute
 
 const app = express();
 
@@ -440,16 +524,44 @@ app.get('/api/leaderboard', (req, res) => {
 });
 
 app.post('/api/leaderboard', (req, res) => {
-    const { name, score, wave, kills } = req.body;
+    const { name, sessionToken } = req.body;
 
-    if (typeof score !== 'number' || score < 0) {
-        return res.status(400).json({ error: 'Invalid score' });
+    // Require valid session token
+    if (!sessionToken) {
+        log('Leaderboard submission rejected: No session token', 'WARN');
+        return res.status(401).json({ error: 'Session token required' });
     }
 
-    const result = addToLeaderboard(name, score, wave, kills);
+    const session = getSessionByToken(sessionToken);
+    if (!session) {
+        log('Leaderboard submission rejected: Invalid session token', 'WARN');
+        return res.status(401).json({ error: 'Invalid session token' });
+    }
+
+    // Use server-tracked values, not client-submitted ones
+    const serverScore = session.score;
+    const serverWave = session.wave;
+    const serverKills = session.kills;
+
+    if (serverScore <= 0) {
+        return res.status(400).json({ error: 'No score to submit' });
+    }
+
+    // Mark session as used for leaderboard (prevent duplicate submissions)
+    if (session.leaderboardSubmitted) {
+        return res.status(400).json({ error: 'Score already submitted' });
+    }
+    session.leaderboardSubmitted = true;
+
+    const result = addToLeaderboard(name, serverScore, serverWave, serverKills);
+    log(`Leaderboard: Session ${sessionToken.substring(0, 8)}... submitted score ${serverScore}`, 'INFO');
+
     res.json({
         ...result,
-        leaderboard
+        leaderboard,
+        verifiedScore: serverScore,
+        verifiedWave: serverWave,
+        verifiedKills: serverKills
     });
 });
 
@@ -1379,6 +1491,9 @@ function killZombie(zombieId, killerId, isHeadshot) {
         killer.score += points;
     }
 
+    // Track kill in player's authenticated session (server-side verification)
+    addKillToSession(killerId, points, isHeadshot);
+
     log(`Zombie ${zombieId} killed by ${killerId}! Remaining: ${GameState.zombiesRemaining}`, 'SUCCESS');
 
     // Chance to spawn pickup
@@ -1512,6 +1627,15 @@ function startWave() {
     const zombieCount = CONFIG.waves.startZombies + (GameState.wave - 1) * CONFIG.waves.zombiesPerWave;
     GameState.zombiesRemaining = zombieCount;
     GameState.zombiesSpawned = 0;
+
+    // Update all player sessions with current wave
+    GameState.players.forEach((player, playerId) => {
+        const session = getSessionByPlayerId(playerId);
+        if (session) {
+            session.wave = GameState.wave;
+            session.isInGame = true;
+        }
+    });
 
     // Check if map needs to change
     const targetMapId = getMapForWave(GameState.wave);
@@ -2048,6 +2172,10 @@ wss.on('connection', (ws, request) => {
     ws._playerId = playerId;
     ws._messageViolations = 0;  // Track rate limit violations
 
+    // Create authenticated game session
+    const session = createGameSession(playerId);
+    ws._sessionToken = session.token;
+
     const player = createPlayer(ws, playerId);
     const room = getPlayerRoom(playerId);
 
@@ -2057,6 +2185,7 @@ wss.on('connection', (ws, request) => {
     const initMessage = {
         type: 'init',
         playerId: playerId,
+        sessionToken: session.token,  // Client needs this for leaderboard submission
         roomId: room ? room.id : null,
         player: {
             id: player.id,

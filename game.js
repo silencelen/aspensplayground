@@ -226,6 +226,7 @@ function updateSettingsUI() {
 let socket = null;
 let localPlayerId = null;
 let localPlayerData = null;
+let sessionToken = null;  // Server-issued session token for authenticated actions
 const remotePlayers = new Map();
 const remotePlayerMeshes = new Map();
 
@@ -1539,20 +1540,31 @@ async function fetchLeaderboard() {
     return [];
 }
 
-async function submitScore(name, score, wave, kills) {
+async function submitScore(name) {
+    // Score, wave, kills are now tracked server-side for anti-cheat
+    // Only the player name and session token are sent
+    if (!sessionToken) {
+        DebugLog.log('Cannot submit score: No session token', 'error');
+        return { added: false, rank: -1, leaderboard: cachedLeaderboard };
+    }
+
     try {
         const response = await fetch('/api/leaderboard', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, score, wave, kills })
+            body: JSON.stringify({ name, sessionToken })
         });
 
         if (response.ok) {
             const result = await response.json();
             cachedLeaderboard = result.leaderboard;
             playerRank = result.rank;
-            DebugLog.log(`Score submitted: rank #${result.rank}`, 'success');
+            DebugLog.log(`Score submitted: rank #${result.rank} (verified: ${result.verifiedScore} pts)`, 'success');
             return result;
+        } else {
+            const error = await response.json();
+            DebugLog.log(`Score submission rejected: ${error.error}`, 'warn');
+            return { added: false, rank: -1, leaderboard: cachedLeaderboard, error: error.error };
         }
     } catch (e) {
         DebugLog.log(`Failed to submit score: ${e.message}`, 'error');
@@ -3469,6 +3481,7 @@ function sendToServer(message) {
 function handleInit(message) {
     localPlayerId = message.playerId;
     localPlayerData = message.player;
+    sessionToken = message.sessionToken;  // Store session token for authenticated actions
 
     DebugLog.log(`Initialized as ${localPlayerData.name} (${localPlayerId})`, 'success');
 
@@ -12512,7 +12525,7 @@ async function singlePlayerGameOver() {
         await fetchLeaderboard(); // Just refresh leaderboard
     } else {
         const playerName = getPlayerName();
-        result = await submitScore(playerName, playerState.score, GameState.wave, playerState.kills);
+        result = await submitScore(playerName);  // Score tracked server-side
 
         // Display rank result
         if (result.added && result.rank > 0) {
