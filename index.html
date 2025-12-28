@@ -2555,6 +2555,39 @@
             }
         }
 
+        /* Accessibility: Reduce motion for users who prefer it */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+
+            /* Keep essential UI feedback but remove decorative animations */
+            .menu-title,
+            .menu-subtitle,
+            #damage-overlay,
+            #low-health-overlay,
+            .hit-marker,
+            .kill-feed-entry,
+            .damage-number,
+            .achievements-card,
+            .cosmetic-option,
+            .weapon-upgrade-card {
+                animation: none !important;
+            }
+
+            /* Disable flicker/glow effects */
+            .menu-button,
+            .cosmetics-button,
+            .leaderboard-toggle,
+            #wave-message,
+            #boss-warning {
+                animation: none !important;
+            }
+        }
+
         /* Adjust HUD for mobile */
         @media (max-width: 900px), (hover: none) {
             /* Hide ALL desktop HUD on mobile - use mobile HUD instead */
