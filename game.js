@@ -326,23 +326,28 @@ function updateSettingsUI() {
 
     if (sensitivitySlider) {
         sensitivitySlider.value = userSettings.mouseSensitivity;
-        document.getElementById('sensitivity-value').textContent = userSettings.mouseSensitivity.toFixed(2);
+        const sensitivityValue = document.getElementById('sensitivity-value');
+        if (sensitivityValue) sensitivityValue.textContent = userSettings.mouseSensitivity.toFixed(2);
     }
     if (masterVolumeSlider) {
         masterVolumeSlider.value = userSettings.masterVolume;
-        document.getElementById('master-volume-value').textContent = Math.round(userSettings.masterVolume * 100) + '%';
+        const masterVolumeValue = document.getElementById('master-volume-value');
+        if (masterVolumeValue) masterVolumeValue.textContent = Math.round(userSettings.masterVolume * 100) + '%';
     }
     if (sfxVolumeSlider) {
         sfxVolumeSlider.value = userSettings.sfxVolume;
-        document.getElementById('sfx-volume-value').textContent = Math.round(userSettings.sfxVolume * 100) + '%';
+        const sfxVolumeValue = document.getElementById('sfx-volume-value');
+        if (sfxVolumeValue) sfxVolumeValue.textContent = Math.round(userSettings.sfxVolume * 100) + '%';
     }
     if (musicVolumeSlider) {
         musicVolumeSlider.value = userSettings.musicVolume;
-        document.getElementById('music-volume-value').textContent = Math.round(userSettings.musicVolume * 100) + '%';
+        const musicVolumeValue = document.getElementById('music-volume-value');
+        if (musicVolumeValue) musicVolumeValue.textContent = Math.round(userSettings.musicVolume * 100) + '%';
     }
     if (fovSlider) {
         fovSlider.value = userSettings.fieldOfView;
-        document.getElementById('fov-value').textContent = userSettings.fieldOfView + '°';
+        const fovValue = document.getElementById('fov-value');
+        if (fovValue) fovValue.textContent = userSettings.fieldOfView + '°';
     }
     if (graphicsSelect) graphicsSelect.value = userSettings.graphicsQuality;
     if (fpsCheckbox) fpsCheckbox.checked = userSettings.showFPS;
@@ -1192,11 +1197,13 @@ const WeaponUpgrades = {
 
         // Start countdown (30 seconds max)
         let countdown = this.shopMaxTime;
-        document.getElementById('shop-countdown').textContent = countdown;
+        const shopCountdownEl = document.getElementById('shop-countdown');
+        if (shopCountdownEl) shopCountdownEl.textContent = countdown;
 
         this.shopCountdown = setInterval(() => {
             countdown--;
-            document.getElementById('shop-countdown').textContent = countdown;
+            const el = document.getElementById('shop-countdown');
+            if (el) el.textContent = countdown;
             if (countdown <= 0) {
                 this.closeShop();
             }
@@ -1222,8 +1229,11 @@ const WeaponUpgrades = {
         } else if (GameState.mode === 'multiplayer' && GameState.isConnected) {
             // Multiplayer: notify server we're ready
             sendToServer({ type: 'shopReady' });
-            document.getElementById('shop-continue-btn').textContent = 'WAITING FOR OTHERS...';
-            document.getElementById('shop-continue-btn').disabled = true;
+            const continueBtn = document.getElementById('shop-continue-btn');
+            if (continueBtn) {
+                continueBtn.textContent = 'WAITING FOR OTHERS...';
+                continueBtn.disabled = true;
+            }
         }
     },
 
@@ -1241,8 +1251,11 @@ const WeaponUpgrades = {
         }
 
         setElementDisplay('upgrade-shop', 'none');
-        document.getElementById('shop-continue-btn').textContent = 'CONTINUE TO NEXT WAVE';
-        document.getElementById('shop-continue-btn').disabled = false;
+        const continueBtn = document.getElementById('shop-continue-btn');
+        if (continueBtn) {
+            continueBtn.textContent = 'CONTINUE TO NEXT WAVE';
+            continueBtn.disabled = false;
+        }
         GameState.isPaused = false;
 
         // Prevent pointer lock loss from triggering pause during transition
@@ -1285,7 +1298,8 @@ const WeaponUpgrades = {
 
     // Update shop UI to reflect current state
     updateShopUI() {
-        document.getElementById('shop-points').textContent = playerState.score;
+        const shopPoints = document.getElementById('shop-points');
+        if (shopPoints) shopPoints.textContent = playerState.score;
 
         document.querySelectorAll('.weapon-upgrade-card').forEach(card => {
             const weaponName = card.dataset.weapon;
@@ -1566,8 +1580,10 @@ const Achievements = {
             grid.appendChild(card);
         });
 
-        document.getElementById('achievements-unlocked').textContent = unlockedCount;
-        document.getElementById('achievements-total').textContent = total;
+        const unlockedEl = document.getElementById('achievements-unlocked');
+        const totalEl = document.getElementById('achievements-total');
+        if (unlockedEl) unlockedEl.textContent = unlockedCount;
+        if (totalEl) totalEl.textContent = total;
     },
 
     // Initialize
@@ -2397,32 +2413,37 @@ function initSettingsMenu() {
     // Sensitivity slider (debounced to prevent excessive updates while dragging)
     document.getElementById('sensitivity-slider')?.addEventListener('input', (e) => {
         userSettings.mouseSensitivity = parseFloat(e.target.value);
-        document.getElementById('sensitivity-value').textContent = userSettings.mouseSensitivity.toFixed(2);
+        const sensitivityValue = document.getElementById('sensitivity-value');
+        if (sensitivityValue) sensitivityValue.textContent = userSettings.mouseSensitivity.toFixed(2);
         applySettingsDebounced();
     });
 
     // Master volume slider
     document.getElementById('master-volume-slider')?.addEventListener('input', (e) => {
         userSettings.masterVolume = parseFloat(e.target.value);
-        document.getElementById('master-volume-value').textContent = Math.round(userSettings.masterVolume * 100) + '%';
+        const masterVolumeValue = document.getElementById('master-volume-value');
+        if (masterVolumeValue) masterVolumeValue.textContent = Math.round(userSettings.masterVolume * 100) + '%';
     });
 
     // SFX volume slider
     document.getElementById('sfx-volume-slider')?.addEventListener('input', (e) => {
         userSettings.sfxVolume = parseFloat(e.target.value);
-        document.getElementById('sfx-volume-value').textContent = Math.round(userSettings.sfxVolume * 100) + '%';
+        const sfxVolumeValue = document.getElementById('sfx-volume-value');
+        if (sfxVolumeValue) sfxVolumeValue.textContent = Math.round(userSettings.sfxVolume * 100) + '%';
     });
 
     // Music volume slider
     document.getElementById('music-volume-slider')?.addEventListener('input', (e) => {
         userSettings.musicVolume = parseFloat(e.target.value);
-        document.getElementById('music-volume-value').textContent = Math.round(userSettings.musicVolume * 100) + '%';
+        const musicVolumeValue = document.getElementById('music-volume-value');
+        if (musicVolumeValue) musicVolumeValue.textContent = Math.round(userSettings.musicVolume * 100) + '%';
     });
 
     // FOV slider (debounced to prevent excessive updates while dragging)
     document.getElementById('fov-slider')?.addEventListener('input', (e) => {
         userSettings.fieldOfView = parseInt(e.target.value);
-        document.getElementById('fov-value').textContent = userSettings.fieldOfView + '°';
+        const fovValue = document.getElementById('fov-value');
+        if (fovValue) fovValue.textContent = userSettings.fieldOfView + '°';
         applySettingsDebounced();
     });
 
@@ -3456,8 +3477,10 @@ function connectToServer() {
     // Don't reconnect if we've exceeded attempts or user left lobby
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         DebugLog.log('Max reconnection attempts reached', 'error');
-        document.getElementById('lobby-status').textContent = 'Connection failed. Please try again.';
-        document.getElementById('ready-button').disabled = true;
+        const lobbyStatus = document.getElementById('lobby-status');
+        const readyBtn = document.getElementById('ready-button');
+        if (lobbyStatus) lobbyStatus.textContent = 'Connection failed. Please try again.';
+        if (readyBtn) readyBtn.disabled = true;
         return;
     }
 
@@ -3467,14 +3490,16 @@ function connectToServer() {
     DebugLog.log(`Connecting to server: ${wsUrl}`, 'net');
 
     // Update status to show we're connecting
-    document.getElementById('lobby-status').textContent = 'Connecting to server...';
-    document.getElementById('ready-button').disabled = true;
+    const lobbyStatusEl = document.getElementById('lobby-status');
+    const readyBtnEl = document.getElementById('ready-button');
+    if (lobbyStatusEl) lobbyStatusEl.textContent = 'Connecting to server...';
+    if (readyBtnEl) readyBtnEl.disabled = true;
 
     try {
         socket = new WebSocket(wsUrl);
     } catch (e) {
         DebugLog.log(`Failed to create WebSocket: ${e.message}`, 'error');
-        document.getElementById('lobby-status').textContent = 'Failed to connect. Check your connection.';
+        if (lobbyStatusEl) lobbyStatusEl.textContent = 'Failed to connect. Check your connection.';
         return;
     }
 
@@ -3484,8 +3509,10 @@ function connectToServer() {
         if (!GameState.isConnected && socket && socket.readyState === WebSocket.CONNECTING) {
             DebugLog.log('Connection timeout', 'error');
             socket.close();
-            document.getElementById('lobby-status').textContent = 'Connection timed out. Tap to retry.';
-            document.getElementById('ready-button').disabled = true;
+            const status = document.getElementById('lobby-status');
+            const btn = document.getElementById('ready-button');
+            if (status) status.textContent = 'Connection timed out. Tap to retry.';
+            if (btn) btn.disabled = true;
         }
     }, 10000);
 
@@ -3498,7 +3525,8 @@ function connectToServer() {
         GameState.isConnected = true;
         reconnectAttempts = 0; // Reset on successful connection
         updateConnectionStatus(true);
-        document.getElementById('lobby-status').textContent = 'Connected! Waiting for server...';
+        const lobbyStatus = document.getElementById('lobby-status');
+        if (lobbyStatus) lobbyStatus.textContent = 'Connected! Waiting for server...';
 
         // Send player name to server
         const playerName = getPlayerName();
@@ -3518,7 +3546,8 @@ function connectToServer() {
         DebugLog.log(`Disconnected from server (code: ${event.code})`, 'warn');
         GameState.isConnected = false;
         updateConnectionStatus(false);
-        document.getElementById('ready-button').disabled = true;
+        const readyBtn = document.getElementById('ready-button');
+        if (readyBtn) readyBtn.disabled = true;
 
         // Only reconnect if we're still in multiplayer mode and in lobby
         // Use isReconnecting flag to prevent multiple parallel reconnect attempts
@@ -3526,7 +3555,8 @@ function connectToServer() {
             isReconnecting = true;
             reconnectAttempts++;
             const delay = RECONNECT_DELAY_BASE * Math.pow(1.5, reconnectAttempts - 1);
-            document.getElementById('lobby-status').textContent = `Reconnecting... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
+            const lobbyStatus = document.getElementById('lobby-status');
+            if (lobbyStatus) lobbyStatus.textContent = `Reconnecting... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
 
             setTimeout(() => {
                 isReconnecting = false;
@@ -3543,8 +3573,10 @@ function connectToServer() {
             connectionTimeout = null;
         }
         DebugLog.log('WebSocket error', 'error');
-        document.getElementById('lobby-status').textContent = 'Connection error. Check your network.';
-        document.getElementById('ready-button').disabled = true;
+        const lobbyStatus = document.getElementById('lobby-status');
+        const readyBtn = document.getElementById('ready-button');
+        if (lobbyStatus) lobbyStatus.textContent = 'Connection error. Check your network.';
+        if (readyBtn) readyBtn.disabled = true;
     };
 
     socket.onmessage = async (event) => {
@@ -3807,8 +3839,10 @@ function handleInit(message) {
         GameState.isReady = localPlayerData.isReady || false;
 
         // Enable ready button
-        document.getElementById('ready-button').disabled = false;
-        document.getElementById('lobby-status').textContent = 'Press READY when you want to start!';
+        const readyBtn = document.getElementById('ready-button');
+        const lobbyStatus = document.getElementById('lobby-status');
+        if (readyBtn) readyBtn.disabled = false;
+        if (lobbyStatus) lobbyStatus.textContent = 'Press READY when you want to start!';
 
         // Update lobby player list
         updateLobbyPlayerList();
@@ -3897,10 +3931,13 @@ function handleLobbyUpdate(message) {
 }
 
 function handleLobbyCountdown(message) {
+    const lobbyStatus = document.getElementById('lobby-status');
+    if (!lobbyStatus) return;
+
     if (message.cancelled) {
-        document.getElementById('lobby-status').textContent = 'Countdown cancelled - waiting for players';
+        lobbyStatus.textContent = 'Countdown cancelled - waiting for players';
     } else if (message.seconds > 0) {
-        document.getElementById('lobby-status').textContent = `Game starting in ${message.seconds}...`;
+        lobbyStatus.textContent = `Game starting in ${message.seconds}...`;
     }
 }
 
@@ -3926,7 +3963,8 @@ function updateLobbyPlayerList() {
     const readyCount = Array.from(LobbyState.players.values()).filter(p => p.isReady).length;
     const total = LobbyState.players.size;
     if (total > 0 && !LobbyState.allReady) {
-        document.getElementById('lobby-status').textContent = `${readyCount}/${total} players ready`;
+        const lobbyStatus = document.getElementById('lobby-status');
+        if (lobbyStatus) lobbyStatus.textContent = `${readyCount}/${total} players ready`;
     }
 }
 
@@ -4403,7 +4441,8 @@ function handleGameOver(message) {
     document.exitPointerLock();
     hideMobileControls();
     setElementDisplay('game-over-screen', 'flex');
-    document.getElementById('final-score').textContent = `Score: ${message.totalScore}`;
+    const finalScore = document.getElementById('final-score');
+    if (finalScore) finalScore.textContent = `Score: ${message.totalScore}`;
     setElementDisplay('hud', 'none');
     setElementDisplay('crosshair', 'none');
 }
@@ -8134,12 +8173,14 @@ function updateMobileInteractButton() {
 
 function showMobileControls() {
     if (isMobile) {
-        document.getElementById('mobile-controls').classList.add('visible');
+        const mobileControls = document.getElementById('mobile-controls');
+        if (mobileControls) mobileControls.classList.add('visible');
     }
 }
 
 function hideMobileControls() {
-    document.getElementById('mobile-controls').classList.remove('visible');
+    const mobileControls = document.getElementById('mobile-controls');
+    if (mobileControls) mobileControls.classList.remove('visible');
 }
 
 function onKeyDown(event) {
@@ -9739,17 +9780,23 @@ function updateHUD() {
     }
 
     // Pistol has infinite ammo
-    if (weapon.current === 'pistol') {
-        document.getElementById('ammo-display').textContent = '\u221E'; // Infinity symbol
-    } else {
-        document.getElementById('ammo-display').textContent = `${weapon.ammo} / ${weapon.reserveAmmo}`;
+    const ammoDisplay = document.getElementById('ammo-display');
+    if (ammoDisplay) {
+        if (weapon.current === 'pistol') {
+            ammoDisplay.textContent = '\u221E'; // Infinity symbol
+        } else {
+            ammoDisplay.textContent = `${weapon.ammo} / ${weapon.reserveAmmo}`;
+        }
     }
 
     // Total enemies left = alive zombies + zombies yet to spawn
     const totalEnemiesLeft = countAliveZombies() + (GameState.zombiesToSpawn || 0);
-    document.getElementById('wave-display').innerHTML = `WAVE ${GameState.wave} <span id="enemy-count" style="color: #ff4444; font-size: 18px; margin-left: 10px;">- ${totalEnemiesLeft} LEFT</span>`;
-    document.getElementById('score-display').textContent = playerState.score;
-    document.getElementById('kills-display').textContent = playerState.kills;
+    const waveDisplay = document.getElementById('wave-display');
+    const scoreDisplay = document.getElementById('score-display');
+    const killsDisplay = document.getElementById('kills-display');
+    if (waveDisplay) waveDisplay.innerHTML = `WAVE ${GameState.wave} <span id="enemy-count" style="color: #ff4444; font-size: 18px; margin-left: 10px;">- ${totalEnemiesLeft} LEFT</span>`;
+    if (scoreDisplay) scoreDisplay.textContent = playerState.score;
+    if (killsDisplay) killsDisplay.textContent = playerState.kills;
 
     // Update weapon display
     const weaponDisplay = document.getElementById('weapon-display');
@@ -10103,8 +10150,10 @@ function updatePlayerList() {
         listHtml += `<div style="color: ${color}; margin: 2px 0; opacity: ${p.isAlive ? 1 : 0.5}">${status} ${escapeHtml(p.name)}</div>`;
     });
 
-    document.getElementById('player-list').innerHTML = listHtml;
-    document.getElementById('player-count').textContent = `Players: ${remotePlayers.size + 1}`;
+    const playerList = document.getElementById('player-list');
+    const playerCount = document.getElementById('player-count');
+    if (playerList) playerList.innerHTML = listHtml;
+    if (playerCount) playerCount.textContent = `Players: ${remotePlayers.size + 1}`;
 }
 
 function updateConnectionStatus(connected) {
@@ -12902,17 +12951,26 @@ async function singlePlayerGameOver() {
     DebugLog.log('Game Over!', 'error');
 
     // Display score
-    document.getElementById('final-score').textContent = `Score: ${playerState.score.toLocaleString()}`;
+    const finalScore = document.getElementById('final-score');
+    if (finalScore) finalScore.textContent = `Score: ${playerState.score.toLocaleString()}`;
 
     // Update statistics dashboard
-    document.getElementById('stat-accuracy').textContent = `${GameStats.getAccuracy()}%`;
-    document.getElementById('stat-kills').textContent = playerState.kills;
-    document.getElementById('stat-headshots').textContent = GameStats.headshots;
-    document.getElementById('stat-wave').textContent = GameState.wave;
-    document.getElementById('stat-damage').textContent = GameStats.damageDealt.toLocaleString();
-    document.getElementById('stat-time').textContent = GameStats.getSurvivalTime();
-    document.getElementById('stat-favorite-weapon').textContent = GameStats.getFavoriteWeapon();
-    document.getElementById('stat-best-streak').textContent = GameStats.bestKillStreak;
+    const statAccuracy = document.getElementById('stat-accuracy');
+    const statKills = document.getElementById('stat-kills');
+    const statHeadshots = document.getElementById('stat-headshots');
+    const statWave = document.getElementById('stat-wave');
+    const statDamage = document.getElementById('stat-damage');
+    const statTime = document.getElementById('stat-time');
+    const statFavoriteWeapon = document.getElementById('stat-favorite-weapon');
+    const statBestStreak = document.getElementById('stat-best-streak');
+    if (statAccuracy) statAccuracy.textContent = `${GameStats.getAccuracy()}%`;
+    if (statKills) statKills.textContent = playerState.kills;
+    if (statHeadshots) statHeadshots.textContent = GameStats.headshots;
+    if (statWave) statWave.textContent = GameState.wave;
+    if (statDamage) statDamage.textContent = GameStats.damageDealt.toLocaleString();
+    if (statTime) statTime.textContent = GameStats.getSurvivalTime();
+    if (statFavoriteWeapon) statFavoriteWeapon.textContent = GameStats.getFavoriteWeapon();
+    if (statBestStreak) statBestStreak.textContent = GameStats.bestKillStreak;
 
     // Submit score to leaderboard (not in dev mode)
     const rankResult = document.getElementById('rank-result');
@@ -13228,7 +13286,8 @@ async function quitToMenu() {
     // Reset leaderboard toggle state and refresh
     setElementDisplay('menu-leaderboard', 'none');
     setElementDisplay('controls-info', 'block');
-    document.getElementById('menu-leaderboard-toggle').textContent = 'VIEW LEADERBOARD';
+    const leaderboardToggle = document.getElementById('menu-leaderboard-toggle');
+    if (leaderboardToggle) leaderboardToggle.textContent = 'VIEW LEADERBOARD';
 
     // Refresh leaderboard in background
     await fetchLeaderboard();
