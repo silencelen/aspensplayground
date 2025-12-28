@@ -822,6 +822,19 @@ const Pathfinder = {
     }
 };
 
+// ==================== SAFE DOM HELPERS ====================
+// Safely set element display property with null check
+function setElementDisplay(id, display) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+}
+
+// Safely set element style property with null check
+function setElementStyle(id, property, value) {
+    const el = document.getElementById(id);
+    if (el) el.style[property] = value;
+}
+
 // ==================== THREE.JS SETUP ====================
 let scene, camera, renderer;
 let player, zombies = new Map(), pickups = new Map();
@@ -1020,7 +1033,7 @@ const WeaponUpgrades = {
         this.localPlayerReady = false;
         this.playersReady.clear();
 
-        document.getElementById('upgrade-shop').style.display = 'flex';
+        setElementDisplay('upgrade-shop', 'flex');
         GameState.isPaused = true;
         this.updateShopUI();
 
@@ -1077,7 +1090,7 @@ const WeaponUpgrades = {
             this.shopCountdown = null;
         }
 
-        document.getElementById('upgrade-shop').style.display = 'none';
+        setElementDisplay('upgrade-shop', 'none');
         document.getElementById('shop-continue-btn').textContent = 'CONTINUE TO NEXT WAVE';
         document.getElementById('shop-continue-btn').disabled = false;
         GameState.isPaused = false;
@@ -1370,14 +1383,14 @@ const Achievements = {
     // Show achievements screen
     showScreen() {
         this.populateGrid();
-        document.getElementById('achievements-screen').style.display = 'flex';
-        document.getElementById('start-screen').style.display = 'none';
+        setElementDisplay('achievements-screen', 'flex');
+        setElementDisplay('start-screen', 'none');
     },
 
     // Hide achievements screen
     hideScreen() {
-        document.getElementById('achievements-screen').style.display = 'none';
-        document.getElementById('start-screen').style.display = 'flex';
+        setElementDisplay('achievements-screen', 'none');
+        setElementDisplay('start-screen', 'flex');
     },
 
     // Populate achievements grid
@@ -1814,7 +1827,7 @@ function initCosmeticsScreen() {
 
     // Open cosmetics screen
     cosmeticsBtn.addEventListener('click', () => {
-        document.getElementById('start-screen').style.display = 'none';
+        setElementDisplay('start-screen', 'none');
         cosmeticsScreen.style.display = 'flex';
         initCosmeticPreviews();
         updateCosmeticSelection();
@@ -1823,7 +1836,7 @@ function initCosmeticsScreen() {
     // Back button
     backBtn.addEventListener('click', () => {
         cosmeticsScreen.style.display = 'none';
-        document.getElementById('start-screen').style.display = 'flex';
+        setElementDisplay('start-screen', 'flex');
         cleanupCosmeticPreviews();
     });
 
@@ -2103,7 +2116,7 @@ function init() {
         WeaponUpgrades.init();
         Achievements.init();
 
-        document.getElementById('loading-screen').style.display = 'none';
+        setElementDisplay('loading-screen', 'none');
         DebugLog.log('Game initialization complete!', 'success');
 
         clock = new THREE.Clock();
@@ -2135,13 +2148,13 @@ function initFPSCounter() {
 function initSettingsMenu() {
     // Settings button handler
     document.getElementById('settings-button')?.addEventListener('click', () => {
-        document.getElementById('settings-screen').style.display = 'flex';
+        setElementDisplay('settings-screen', 'flex');
         updateSettingsUI();
     });
 
     // Close settings
     document.getElementById('settings-close')?.addEventListener('click', () => {
-        document.getElementById('settings-screen').style.display = 'none';
+        setElementDisplay('settings-screen', 'none');
         saveSettings();
     });
 
@@ -3581,12 +3594,12 @@ function handleInit(message) {
         DebugLog.log(`Joining existing game at Wave ${GameState.wave}`, 'game');
 
         // Make sure UI is in game state
-        document.getElementById('lobby-screen').style.display = 'none';
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('game-over-screen').style.display = 'none';
-        document.getElementById('hud').style.display = 'flex';
-        document.getElementById('crosshair').style.display = 'block';
-        document.getElementById('multiplayer-panel').style.display = 'block';
+        setElementDisplay('lobby-screen', 'none');
+        setElementDisplay('start-screen', 'none');
+        setElementDisplay('game-over-screen', 'none');
+        setElementDisplay('hud', 'flex');
+        setElementDisplay('crosshair', 'block');
+        setElementDisplay('multiplayer-panel', 'block');
 
         // Request pointer lock after a short delay
         setTimeout(() => {
@@ -4033,12 +4046,12 @@ function handleGameStart(message) {
     pickups.clear();
 
     // Hide menus/lobby, show HUD
-    document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('lobby-screen').style.display = 'none';
-    document.getElementById('game-over-screen').style.display = 'none';
-    document.getElementById('hud').style.display = 'flex';
-    document.getElementById('crosshair').style.display = 'block';
-    document.getElementById('multiplayer-panel').style.display = 'block';
+    setElementDisplay('start-screen', 'none');
+    setElementDisplay('lobby-screen', 'none');
+    setElementDisplay('game-over-screen', 'none');
+    setElementDisplay('hud', 'flex');
+    setElementDisplay('crosshair', 'block');
+    setElementDisplay('multiplayer-panel', 'block');
 
     // Hide ALL overlays that might be blocking the view
     const overlaysToHide = [
@@ -4120,10 +4133,10 @@ function handleGameOver(message) {
 
     document.exitPointerLock();
     hideMobileControls();
-    document.getElementById('game-over-screen').style.display = 'flex';
+    setElementDisplay('game-over-screen', 'flex');
     document.getElementById('final-score').textContent = `Score: ${message.totalScore}`;
-    document.getElementById('hud').style.display = 'none';
-    document.getElementById('crosshair').style.display = 'none';
+    setElementDisplay('hud', 'none');
+    setElementDisplay('crosshair', 'none');
 }
 
 function handleGameReset() {
@@ -9393,7 +9406,7 @@ function countAliveZombies() {
 }
 
 function updateHUD() {
-    document.getElementById('health-bar').style.width = `${playerState.health}%`;
+    setElementStyle('health-bar', 'width', `${playerState.health}%`);
 
     // Update mobile health bar too
     const mobileHealthBar = document.getElementById('mobile-health-bar');
@@ -9876,7 +9889,7 @@ function togglePause() {
     if (GameState.isGameOver) return;
 
     GameState.isPaused = !GameState.isPaused;
-    document.getElementById('pause-screen').style.display = GameState.isPaused ? 'flex' : 'none';
+    setElementDisplay('pause-screen', GameState.isPaused ? 'flex' : 'none');
 
     if (GameState.isPaused) {
         document.exitPointerLock();
@@ -10497,9 +10510,9 @@ function startSinglePlayerGame() {
     DebugLog.log('Starting Single Player mode...', 'game');
 
     // Hide menu, show game UI
-    document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('hud').style.display = 'flex';
-    document.getElementById('crosshair').style.display = 'block';
+    setElementDisplay('start-screen', 'none');
+    setElementDisplay('hud', 'flex');
+    setElementDisplay('crosshair', 'block');
 
     // Initialize optimization systems
     ZombiePool.init();
@@ -12606,7 +12619,7 @@ async function singlePlayerGameOver() {
     // Render leaderboard with highlight
     renderLeaderboard('gameover-leaderboard-content', result.rank);
 
-    document.getElementById('game-over-screen').style.display = 'flex';
+    setElementDisplay('game-over-screen', 'flex');
     document.exitPointerLock();
     hideMobileControls();
 }
@@ -12668,8 +12681,8 @@ function initEventListeners() {
     // Multiplayer button - go to lobby
     document.getElementById('multiplayer-button').addEventListener('click', () => {
         GameState.mode = 'multiplayer';
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('lobby-screen').style.display = 'flex';
+        setElementDisplay('start-screen', 'none');
+        setElementDisplay('lobby-screen', 'flex');
         connectToServer();
     });
 
@@ -12705,7 +12718,7 @@ function initEventListeners() {
         } else {
             sendToServer({ type: 'requestReset' });
         }
-        document.getElementById('game-over-screen').style.display = 'none';
+        setElementDisplay('game-over-screen', 'none');
     });
 
     document.getElementById('resume-button').addEventListener('click', () => {
@@ -12738,7 +12751,7 @@ function initEventListeners() {
 
     // Main menu button on game over screen
     document.getElementById('menu-button').addEventListener('click', () => {
-        document.getElementById('game-over-screen').style.display = 'none';
+        setElementDisplay('game-over-screen', 'none');
         quitToMenu();
     });
 
@@ -12806,7 +12819,7 @@ async function quitToMenu() {
     WeaponUpgrades.localPlayerReady = false;
     WeaponUpgrades.playersReady.clear();
     inShopTransition = false;
-    document.getElementById('upgrade-shop').style.display = 'none';
+    setElementDisplay('upgrade-shop', 'none');
 
     if (GameState.mode === 'singleplayer') {
         resetDestructibles();
@@ -12837,18 +12850,18 @@ async function quitToMenu() {
     // Reset player position
     player.position.set(0, 0, 0);
 
-    document.getElementById('pause-screen').style.display = 'none';
-    document.getElementById('game-over-screen').style.display = 'none';
-    document.getElementById('lobby-screen').style.display = 'none';
-    document.getElementById('start-screen').style.display = 'flex';
-    document.getElementById('hud').style.display = 'none';
-    document.getElementById('crosshair').style.display = 'none';
-    document.getElementById('multiplayer-panel').style.display = 'none';
+    setElementDisplay('pause-screen', 'none');
+    setElementDisplay('game-over-screen', 'none');
+    setElementDisplay('lobby-screen', 'none');
+    setElementDisplay('start-screen', 'flex');
+    setElementDisplay('hud', 'none');
+    setElementDisplay('crosshair', 'none');
+    setElementDisplay('multiplayer-panel', 'none');
     document.exitPointerLock();
 
     // Reset leaderboard toggle state and refresh
-    document.getElementById('menu-leaderboard').style.display = 'none';
-    document.getElementById('controls-info').style.display = 'block';
+    setElementDisplay('menu-leaderboard', 'none');
+    setElementDisplay('controls-info', 'block');
     document.getElementById('menu-leaderboard-toggle').textContent = 'VIEW LEADERBOARD';
 
     // Refresh leaderboard in background
@@ -12871,8 +12884,8 @@ function leaveLobby() {
 
     LobbyState.players.clear();
 
-    document.getElementById('lobby-screen').style.display = 'none';
-    document.getElementById('start-screen').style.display = 'flex';
+    setElementDisplay('lobby-screen', 'none');
+    setElementDisplay('start-screen', 'flex');
 
     // Reset ready button
     const btn = document.getElementById('ready-button');
