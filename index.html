@@ -30,10 +30,26 @@
             box-sizing: border-box;
         }
 
-        body {
+        html, body {
             overflow: hidden;
             background: #000;
             font-family: 'Creepster', 'Impact', sans-serif;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* Allow normal touch behavior on form inputs */
+        input, textarea, select {
+            touch-action: auto;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        /* Prevent all browser gestures on game canvas */
+        #game-container, canvas {
+            touch-action: none;
         }
 
         /* Mobile Landscape Lock - Rotate Device Overlay */
