@@ -1155,6 +1155,12 @@
             box-shadow: 0 0 15px rgba(255, 102, 0, 0.5);
         }
 
+        .achievements-close-btn:focus,
+        .achievements-close-btn:focus-visible {
+            outline: 2px solid #ffff00;
+            outline-offset: 2px;
+        }
+
         .achievements-progress {
             text-align: center;
             margin-bottom: 20px;
@@ -1202,6 +1208,8 @@
 
         .settings-section {
             margin-bottom: 20px;
+            border: none;
+            padding: 0;
         }
 
         .settings-section-title {
@@ -1210,6 +1218,7 @@
             margin-bottom: 12px;
             border-bottom: 1px solid #8b0000;
             padding-bottom: 5px;
+            padding-left: 0;
         }
 
         .settings-row {
@@ -1681,66 +1690,66 @@
     <div id="fps-display">60 FPS</div>
 
     <!-- Settings Screen -->
-    <div id="settings-screen">
+    <div id="settings-screen" role="dialog" aria-labelledby="settings-title" aria-modal="true">
         <div class="settings-container">
-            <div class="settings-title">SETTINGS</div>
+            <h2 class="settings-title" id="settings-title">SETTINGS</h2>
 
-            <div class="settings-section">
-                <div class="settings-section-title">CONTROLS</div>
+            <fieldset class="settings-section">
+                <legend class="settings-section-title">CONTROLS</legend>
                 <div class="settings-row">
-                    <span class="settings-label">Mouse Sensitivity</span>
-                    <input type="range" id="sensitivity-slider" class="settings-slider" min="0.25" max="2" step="0.05" value="1">
-                    <span id="sensitivity-value" class="settings-value">1.00</span>
+                    <label for="sensitivity-slider" class="settings-label">Mouse Sensitivity</label>
+                    <input type="range" id="sensitivity-slider" class="settings-slider" min="0.25" max="2" step="0.05" value="1" aria-describedby="sensitivity-value">
+                    <span id="sensitivity-value" class="settings-value" aria-live="polite">1.00</span>
                 </div>
                 <div class="settings-row">
-                    <span class="settings-label">Field of View</span>
-                    <input type="range" id="fov-slider" class="settings-slider" min="60" max="110" step="5" value="75">
-                    <span id="fov-value" class="settings-value">75</span>
+                    <label for="fov-slider" class="settings-label">Field of View</label>
+                    <input type="range" id="fov-slider" class="settings-slider" min="60" max="110" step="5" value="75" aria-describedby="fov-value">
+                    <span id="fov-value" class="settings-value" aria-live="polite">75</span>
                 </div>
-            </div>
+            </fieldset>
 
-            <div class="settings-section">
-                <div class="settings-section-title">AUDIO</div>
+            <fieldset class="settings-section">
+                <legend class="settings-section-title">AUDIO</legend>
                 <div class="settings-row">
-                    <span class="settings-label">Master Volume</span>
-                    <input type="range" id="master-volume-slider" class="settings-slider" min="0" max="1" step="0.05" value="0.7">
-                    <span id="master-volume-value" class="settings-value">70%</span>
+                    <label for="master-volume-slider" class="settings-label">Master Volume</label>
+                    <input type="range" id="master-volume-slider" class="settings-slider" min="0" max="1" step="0.05" value="0.7" aria-describedby="master-volume-value">
+                    <span id="master-volume-value" class="settings-value" aria-live="polite">70%</span>
                 </div>
                 <div class="settings-row">
-                    <span class="settings-label">SFX Volume</span>
-                    <input type="range" id="sfx-volume-slider" class="settings-slider" min="0" max="1" step="0.05" value="1">
-                    <span id="sfx-volume-value" class="settings-value">100%</span>
+                    <label for="sfx-volume-slider" class="settings-label">SFX Volume</label>
+                    <input type="range" id="sfx-volume-slider" class="settings-slider" min="0" max="1" step="0.05" value="1" aria-describedby="sfx-volume-value">
+                    <span id="sfx-volume-value" class="settings-value" aria-live="polite">100%</span>
                 </div>
                 <div class="settings-row">
-                    <span class="settings-label">Music Volume</span>
-                    <input type="range" id="music-volume-slider" class="settings-slider" min="0" max="1" step="0.05" value="0.5">
-                    <span id="music-volume-value" class="settings-value">50%</span>
+                    <label for="music-volume-slider" class="settings-label">Music Volume</label>
+                    <input type="range" id="music-volume-slider" class="settings-slider" min="0" max="1" step="0.05" value="0.5" aria-describedby="music-volume-value">
+                    <span id="music-volume-value" class="settings-value" aria-live="polite">50%</span>
                 </div>
-            </div>
+            </fieldset>
 
-            <div class="settings-section">
-                <div class="settings-section-title">GRAPHICS</div>
+            <fieldset class="settings-section">
+                <legend class="settings-section-title">GRAPHICS</legend>
                 <div class="settings-row">
-                    <span class="settings-label">Quality</span>
-                    <select id="graphics-select" class="settings-select">
+                    <label for="graphics-select" class="settings-label">Quality</label>
+                    <select id="graphics-select" class="settings-select" aria-label="Graphics quality">
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
                         <option value="high" selected>High</option>
                     </select>
                 </div>
                 <div class="settings-row">
-                    <span class="settings-label">Show FPS</span>
-                    <input type="checkbox" id="fps-checkbox" class="settings-checkbox">
+                    <label for="fps-checkbox" class="settings-label">Show FPS</label>
+                    <input type="checkbox" id="fps-checkbox" class="settings-checkbox" aria-label="Show FPS counter">
                 </div>
                 <div class="settings-row">
-                    <span class="settings-label">Screen Shake</span>
-                    <input type="checkbox" id="shake-checkbox" class="settings-checkbox" checked>
+                    <label for="shake-checkbox" class="settings-label">Screen Shake</label>
+                    <input type="checkbox" id="shake-checkbox" class="settings-checkbox" checked aria-label="Enable screen shake effects">
                 </div>
-            </div>
+            </fieldset>
 
             <div class="settings-buttons">
-                <button id="settings-reset" class="settings-btn settings-btn-secondary">Reset Defaults</button>
-                <button id="settings-close" class="settings-btn settings-btn-primary">Save & Close</button>
+                <button id="settings-reset" class="settings-btn settings-btn-secondary" aria-label="Reset all settings to defaults">Reset Defaults</button>
+                <button id="settings-close" class="settings-btn settings-btn-primary" aria-label="Save settings and close">Save & Close</button>
             </div>
         </div>
     </div>
@@ -1824,22 +1833,22 @@
     </div>
 
     <div id="start-screen">
-        <button id="settings-button">SETTINGS</button>
+        <button id="settings-button" aria-label="Open game settings">SETTINGS</button>
         <div class="menu-title">ASPEN'S PLAYGROUND</div>
         <div class="menu-subtitle">Haunted Chuck E. Cheese Zombie Survival</div>
         <div class="player-name-container">
             <label for="player-name-input" class="player-name-label">PLAYER NAME</label>
             <input type="text" id="player-name-input" class="player-name-input" placeholder="Enter your name..." maxlength="20">
         </div>
-        <div class="mode-buttons">
-            <button class="menu-button mode-button" id="singleplayer-button">SINGLE PLAYER</button>
-            <button class="menu-button mode-button" id="multiplayer-button">MULTIPLAYER</button>
+        <div class="mode-buttons" role="group" aria-label="Game mode selection">
+            <button class="menu-button mode-button" id="singleplayer-button" aria-label="Start single player game">SINGLE PLAYER</button>
+            <button class="menu-button mode-button" id="multiplayer-button" aria-label="Start multiplayer game">MULTIPLAYER</button>
         </div>
         <div class="menu-buttons-corner">
-            <button class="menu-button cosmetics-button" id="cosmetics-button">COSMETICS</button>
-            <button class="menu-button cosmetics-button" id="achievements-button">ACHIEVEMENTS</button>
+            <button class="menu-button cosmetics-button" id="cosmetics-button" aria-label="Open character customization">COSMETICS</button>
+            <button class="menu-button cosmetics-button" id="achievements-button" aria-label="View achievements">ACHIEVEMENTS</button>
         </div>
-        <button class="leaderboard-toggle" id="menu-leaderboard-toggle">VIEW LEADERBOARD</button>
+        <button class="leaderboard-toggle" id="menu-leaderboard-toggle" aria-label="Toggle leaderboard display" aria-expanded="false">VIEW LEADERBOARD</button>
         <div id="menu-leaderboard" class="leaderboard-container" style="display: none;">
             <div class="leaderboard-title">TOP 10 SURVIVORS</div>
             <div id="menu-leaderboard-content"></div>
@@ -1860,48 +1869,48 @@
     </div>
 
     <!-- Cosmetics Screen -->
-    <div id="cosmetics-screen" style="display: none;">
+    <div id="cosmetics-screen" style="display: none;" role="dialog" aria-labelledby="cosmetics-title" aria-modal="true">
         <div class="cosmetics-container">
-            <div class="menu-title">CHARACTER SELECT</div>
+            <h2 class="menu-title" id="cosmetics-title">CHARACTER SELECT</h2>
             <div class="menu-subtitle">Choose your survivor</div>
-            <div class="cosmetics-grid">
-                <div class="cosmetic-option" data-cosmetic="default">
-                    <div class="cosmetic-preview" id="preview-default"></div>
+            <div class="cosmetics-grid" role="listbox" aria-label="Character selection">
+                <div class="cosmetic-option" data-cosmetic="default" role="option" tabindex="0" aria-label="Survivor: Standard issue gear" aria-selected="false">
+                    <div class="cosmetic-preview" id="preview-default" aria-hidden="true"></div>
                     <div class="cosmetic-name">SURVIVOR</div>
                     <div class="cosmetic-desc">Standard issue gear</div>
                 </div>
-                <div class="cosmetic-option" data-cosmetic="military">
-                    <div class="cosmetic-preview" id="preview-military"></div>
+                <div class="cosmetic-option" data-cosmetic="military" role="option" tabindex="0" aria-label="Soldier: Military combat uniform" aria-selected="false">
+                    <div class="cosmetic-preview" id="preview-military" aria-hidden="true"></div>
                     <div class="cosmetic-name">SOLDIER</div>
                     <div class="cosmetic-desc">Military combat uniform</div>
                 </div>
-                <div class="cosmetic-option" data-cosmetic="hazmat">
-                    <div class="cosmetic-preview" id="preview-hazmat"></div>
+                <div class="cosmetic-option" data-cosmetic="hazmat" role="option" tabindex="0" aria-label="Hazmat: Biohazard protection suit" aria-selected="false">
+                    <div class="cosmetic-preview" id="preview-hazmat" aria-hidden="true"></div>
                     <div class="cosmetic-name">HAZMAT</div>
                     <div class="cosmetic-desc">Biohazard protection suit</div>
                 </div>
-                <div class="cosmetic-option" data-cosmetic="punk">
-                    <div class="cosmetic-preview" id="preview-punk"></div>
+                <div class="cosmetic-option" data-cosmetic="punk" role="option" tabindex="0" aria-label="Punk: Street survivor style" aria-selected="false">
+                    <div class="cosmetic-preview" id="preview-punk" aria-hidden="true"></div>
                     <div class="cosmetic-name">PUNK</div>
                     <div class="cosmetic-desc">Street survivor style</div>
                 </div>
-                <div class="cosmetic-option" data-cosmetic="mascot">
-                    <div class="cosmetic-preview" id="preview-mascot"></div>
+                <div class="cosmetic-option" data-cosmetic="mascot" role="option" tabindex="0" aria-label="Mascot: Chuck E. costume" aria-selected="false">
+                    <div class="cosmetic-preview" id="preview-mascot" aria-hidden="true"></div>
                     <div class="cosmetic-name">MASCOT</div>
                     <div class="cosmetic-desc">Chuck E. costume (creepy)</div>
                 </div>
             </div>
             <div class="cosmetics-buttons">
-                <button class="menu-button" id="cosmetics-back-button">BACK</button>
+                <button class="menu-button" id="cosmetics-back-button" aria-label="Return to main menu">BACK</button>
             </div>
         </div>
     </div>
 
     <!-- Upgrade Shop Screen -->
-    <div id="upgrade-shop" style="display: none;">
+    <div id="upgrade-shop" style="display: none;" role="dialog" aria-labelledby="shop-title" aria-modal="true">
         <div class="shop-container">
             <div class="shop-header">
-                <div class="shop-title">UPGRADE SHOP</div>
+                <h2 class="shop-title" id="shop-title">UPGRADE SHOP</h2>
                 <div class="shop-points">POINTS: <span id="shop-points">0</span></div>
             </div>
             <div class="shop-subtitle">Next wave in <span id="shop-countdown">30</span>s</div>
@@ -2023,38 +2032,38 @@
                     </div>
                 </div>
             </div>
-            <button class="menu-button" id="shop-continue-btn">CONTINUE TO NEXT WAVE</button>
+            <button class="menu-button" id="shop-continue-btn" aria-label="Skip upgrades and continue to next wave">CONTINUE TO NEXT WAVE</button>
         </div>
     </div>
 
     <!-- Achievements Screen -->
-    <div id="achievements-screen">
+    <div id="achievements-screen" role="dialog" aria-labelledby="achievements-title" aria-modal="true">
         <div class="achievements-container">
-            <div class="achievements-title">ACHIEVEMENTS</div>
+            <h2 class="achievements-title" id="achievements-title">ACHIEVEMENTS</h2>
             <div class="achievements-progress">Unlocked: <span id="achievements-unlocked">0</span> / <span id="achievements-total">12</span></div>
             <div class="achievements-grid" id="achievements-grid">
                 <!-- Achievements populated by JS -->
             </div>
-            <button class="achievements-close-btn" id="achievements-close-btn">CLOSE</button>
+            <button class="achievements-close-btn" id="achievements-close-btn" aria-label="Close achievements and return to menu">CLOSE</button>
         </div>
     </div>
 
-    <div id="lobby-screen" style="display: none;">
-        <div class="menu-title">MULTIPLAYER LOBBY</div>
+    <div id="lobby-screen" style="display: none;" role="region" aria-labelledby="lobby-title">
+        <h2 class="menu-title" id="lobby-title">MULTIPLAYER LOBBY</h2>
         <div class="menu-subtitle">Waiting for players...</div>
-        <div id="lobby-players">
+        <div id="lobby-players" role="list" aria-label="Players in lobby">
             <div class="lobby-header">PLAYERS</div>
             <div id="lobby-player-list"></div>
         </div>
-        <div id="lobby-status">Connecting to server...</div>
+        <div id="lobby-status" aria-live="polite">Connecting to server...</div>
         <div class="lobby-buttons">
-            <button class="menu-button" id="ready-button" disabled>READY</button>
-            <button class="menu-button secondary" id="leave-lobby-button">BACK</button>
+            <button class="menu-button" id="ready-button" disabled aria-label="Toggle ready status">READY</button>
+            <button class="menu-button secondary" id="leave-lobby-button" aria-label="Leave lobby and return to menu">BACK</button>
         </div>
     </div>
 
-    <div id="game-over-screen">
-        <div class="menu-title">GAME OVER</div>
+    <div id="game-over-screen" role="dialog" aria-labelledby="gameover-title" aria-modal="true">
+        <h2 class="menu-title" id="gameover-title">GAME OVER</h2>
         <div class="menu-subtitle">The zombies got you!</div>
         <div id="final-score">Score: 0</div>
 
@@ -2113,14 +2122,14 @@
             <div class="leaderboard-title">TOP 10 SURVIVORS</div>
             <div id="gameover-leaderboard-content"></div>
         </div>
-        <button class="menu-button" id="restart-button">PLAY AGAIN</button>
-        <button class="menu-button secondary" id="menu-button" style="background: linear-gradient(180deg, #444, #222); border-color: #666;">MAIN MENU</button>
+        <button class="menu-button" id="restart-button" aria-label="Play again with same settings">PLAY AGAIN</button>
+        <button class="menu-button secondary" id="menu-button" style="background: linear-gradient(180deg, #444, #222); border-color: #666;" aria-label="Return to main menu">MAIN MENU</button>
     </div>
 
-    <div id="pause-screen">
-        <div class="menu-title">PAUSED</div>
-        <button class="menu-button" id="resume-button">RESUME</button>
-        <button class="menu-button" id="quit-button">QUIT TO MENU</button>
+    <div id="pause-screen" role="dialog" aria-labelledby="pause-title" aria-modal="true">
+        <h2 class="menu-title" id="pause-title">PAUSED</h2>
+        <button class="menu-button" id="resume-button" aria-label="Resume game">RESUME</button>
+        <button class="menu-button" id="quit-button" aria-label="Quit to main menu">QUIT TO MENU</button>
     </div>
 
     <div id="debug-log"></div>
