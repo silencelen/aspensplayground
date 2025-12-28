@@ -3631,9 +3631,14 @@ function connectToServer() {
 
         // Send cosmetic selection to server
         sendToServer({ type: 'setCosmetic', cosmetic: selectedCosmetic });
+
+        // Start latency tracking
+        startPingInterval();
     };
 
     socket.onclose = (event) => {
+        // Stop latency tracking
+        stopPingInterval();
         if (connectionTimeout) {
             clearTimeout(connectionTimeout);
             connectionTimeout = null;
@@ -3667,7 +3672,10 @@ function connectToServer() {
             clearTimeout(connectionTimeout);
             connectionTimeout = null;
         }
-        DebugLog.log('WebSocket error', 'error');
+        // Log more details about the error
+        const errorDetails = error.message || error.type || 'Unknown WebSocket error';
+        DebugLog.log(`WebSocket error: ${errorDetails}`, 'error');
+        console.error('WebSocket error details:', error);
         const lobbyStatus = document.getElementById('lobby-status');
         const readyBtn = document.getElementById('ready-button');
         if (lobbyStatus) lobbyStatus.textContent = 'Connection error. Check your network.';
@@ -3876,9 +3884,50 @@ function handleServerMessage(message) {
             WeaponUpgrades.handleShopSync(message);
             break;
 
+        case 'pong':
+            handlePong(message);
+            break;
+
         default:
             DebugLog.log(`Unknown message type: ${message.type}`, 'warn');
     }
+}
+
+// ==================== NETWORK LATENCY TRACKING ====================
+let lastPingTime = 0;
+let networkLatency = 0;
+let pingInterval = null;
+
+function startPingInterval() {
+    // Send ping every 5 seconds to track latency
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            lastPingTime = performance.now();
+            sendToServer({ type: 'ping', timestamp: lastPingTime });
+        }
+    }, 5000);
+}
+
+function stopPingInterval() {
+    if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+    }
+}
+
+function handlePong(message) {
+    if (lastPingTime > 0) {
+        networkLatency = Math.round(performance.now() - lastPingTime);
+        // Log high latency warnings
+        if (networkLatency > 200) {
+            DebugLog.log(`High latency detected: ${networkLatency}ms`, 'warn');
+        }
+    }
+}
+
+function getNetworkLatency() {
+    return networkLatency;
 }
 
 function sendToServer(message) {

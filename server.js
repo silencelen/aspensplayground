@@ -3158,6 +3158,11 @@ function handleMessage(playerId, message) {
             handleShopReady(playerId);
             break;
 
+        case 'ping':
+            // Respond to ping with pong for latency tracking
+            safeSend(ws, JSON.stringify({ type: 'pong', timestamp: message.timestamp }));
+            break;
+
         default:
             // Silently ignore unknown message types to prevent log spam
             break;
