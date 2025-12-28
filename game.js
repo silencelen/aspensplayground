@@ -3624,7 +3624,7 @@ function updateLobbyPlayerList() {
         div.className = 'lobby-player' + (player.isReady ? ' ready' : '') + (id === localPlayerId ? ' you' : '');
 
         div.innerHTML = `
-            <span class="player-name">${player.name}</span>
+            <span class="player-name">${escapeHtml(player.name)}</span>
             <span class="player-status ${player.isReady ? 'ready' : 'waiting'}">${player.isReady ? 'READY' : 'Waiting...'}</span>
         `;
 
@@ -9710,14 +9710,14 @@ function updatePlayerList() {
     // Add local player
     if (localPlayerData) {
         const color = '#' + (localPlayerData.color || 0xffffff).toString(16).padStart(6, '0');
-        listHtml += `<div style="color: ${color}; margin: 2px 0;">● ${localPlayerData.name} (You)</div>`;
+        listHtml += `<div style="color: ${color}; margin: 2px 0;">● ${escapeHtml(localPlayerData.name)} (You)</div>`;
     }
 
     // Add remote players
     remotePlayers.forEach((p, id) => {
         const color = '#' + (p.color || 0xffffff).toString(16).padStart(6, '0');
         const status = p.isAlive ? '●' : '✗';
-        listHtml += `<div style="color: ${color}; margin: 2px 0; opacity: ${p.isAlive ? 1 : 0.5}">${status} ${p.name}</div>`;
+        listHtml += `<div style="color: ${color}; margin: 2px 0; opacity: ${p.isAlive ? 1 : 0.5}">${status} ${escapeHtml(p.name)}</div>`;
     });
 
     document.getElementById('player-list').innerHTML = listHtml;
@@ -9781,7 +9781,7 @@ function showWaveAnnouncement(waveNum, isBossWave = false) {
             animation: bossAnnounce 3s ease-out forwards; text-align: center;
         `;
         const bossProps = WaveSystem.getBossProps(waveNum);
-        announcement.innerHTML = `<div style="font-size: 36px; margin-bottom: 10px;">BOSS WAVE</div>${bossProps.name}`;
+        announcement.innerHTML = `<div style="font-size: 36px; margin-bottom: 10px;">BOSS WAVE</div>${escapeHtml(bossProps.name)}`;
     } else {
         announcement.style.cssText = `
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
