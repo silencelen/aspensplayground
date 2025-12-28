@@ -16,6 +16,14 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1a0a0a">
     <style>
+        /* Safe area insets for notched devices (iPhone X+, Pixels, etc.) */
+        :root {
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -2216,8 +2224,8 @@
         /* Mobile HUD Left Panel - Health, Stats, Wave, Ammo */
         #mobile-hud-left {
             position: absolute;
-            top: 10px;
-            left: 10px;
+            top: max(10px, var(--safe-top));
+            left: max(10px, var(--safe-left));
             display: flex;
             flex-direction: column;
             gap: 4px;
@@ -2333,8 +2341,8 @@
 
         #joystick-container {
             position: absolute;
-            bottom: 25px;
-            left: 15px;
+            bottom: max(25px, var(--safe-bottom));
+            left: max(15px, var(--safe-left));
             pointer-events: auto;
             touch-action: none;
             z-index: 85;
@@ -2388,8 +2396,8 @@
 
         #mobile-buttons {
             position: absolute;
-            bottom: 30px;
-            right: 15px;
+            bottom: max(30px, var(--safe-bottom));
+            right: max(15px, var(--safe-right));
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -2474,7 +2482,7 @@
         /* Weapon switching buttons - bottom center */
         #mobile-weapons {
             position: absolute;
-            bottom: 20px;
+            bottom: max(20px, var(--safe-bottom));
             left: 50%;
             transform: translateX(-50%);
             display: flex;
