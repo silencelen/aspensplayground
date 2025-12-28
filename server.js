@@ -14,6 +14,7 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const cors = require('cors');
 
 // ==================== RATE LIMITING CONFIG ====================
 const RATE_LIMIT = {
@@ -319,6 +320,31 @@ app.use(helmet({
     },
     crossOriginEmbedderPolicy: false,  // Required for some game assets
     crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// ==================== CORS CONFIGURATION ====================
+const allowedOrigins = [
+    `https://${DOMAIN}`,
+    `https://www.${DOMAIN}`,
+    'http://localhost:3000',      // Local development
+    'https://localhost:3000'      // Local development with self-signed cert
+];
+
+app.use(cors({
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl, or same-origin)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            log(`CORS blocked request from: ${origin}`, 'WARN');
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type']
 }));
 
 // Serve static files and parse JSON
