@@ -7,6 +7,7 @@ const MapManager = {
     maps: {},
     scene: null,
     isTransitioning: false,
+    transitionPromise: null,
     bossMode: false,
     bossBarriers: [],
 
@@ -52,9 +53,10 @@ const MapManager = {
 
     // Load a map by ID
     async loadMap(mapId) {
-        if (this.isTransitioning) {
-            console.warn('[MapManager] Already transitioning, ignoring load request');
-            return false;
+        // If a transition is in progress, wait for it to complete first
+        if (this.isTransitioning && this.transitionPromise) {
+            console.log('[MapManager] Waiting for current transition to complete...');
+            await this.transitionPromise;
         }
 
         const newMap = this.maps[mapId];
@@ -63,8 +65,24 @@ const MapManager = {
             return false;
         }
 
+        // Skip if already on this map
+        if (this.currentMapId === mapId) {
+            console.log(`[MapManager] Already on map: ${mapId}`);
+            return true;
+        }
+
         this.isTransitioning = true;
         console.log(`[MapManager] Loading map: ${mapId}`);
+
+        // Store promise so other callers can wait for this transition
+        this.transitionPromise = this._performTransition(mapId, newMap);
+        const result = await this.transitionPromise;
+        this.transitionPromise = null;
+        return result;
+    },
+
+    // Internal method to perform the actual map transition
+    async _performTransition(mapId, newMap) {
 
         // Fade out transition
         await this.fadeTransition(true);

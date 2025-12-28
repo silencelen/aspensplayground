@@ -4221,11 +4221,13 @@ async function handleWaveStart(message) {
     if (typeof MapManager !== 'undefined' && MapManager.currentMap && message.mapChanged) {
         DebugLog.log(`Server: Map changing to ${message.mapId}`, 'game');
         try {
-            await MapManager.loadMap(message.mapId);
+            const mapLoaded = await MapManager.loadMap(message.mapId);
 
-            // Reposition player after map change (camera follows as child)
-            const spawn = MapManager.getPlayerSpawn();
-            player.position.set(spawn.x, spawn.y, spawn.z);
+            // Only reposition player if map actually loaded
+            if (mapLoaded) {
+                const spawn = MapManager.getPlayerSpawn();
+                player.position.set(spawn.x, spawn.y, spawn.z);
+            }
         } catch (err) {
             DebugLog.log(`Failed to load map ${message.mapId}: ${err.message}`, 'error');
         }
@@ -11145,11 +11147,13 @@ async function startSinglePlayerWave() {
         if (targetMapId !== MapManager.currentMapId) {
             DebugLog.log(`Wave ${GameState.wave} - Changing map to ${targetMapId}`, 'game');
             try {
-                await MapManager.loadMap(targetMapId);
+                const mapLoaded = await MapManager.loadMap(targetMapId);
 
-                // Reposition player after map change (camera follows as child)
-                const spawn = MapManager.getPlayerSpawn();
-                player.position.set(spawn.x, spawn.y, spawn.z);
+                // Only reposition player if map actually loaded
+                if (mapLoaded) {
+                    const spawn = MapManager.getPlayerSpawn();
+                    player.position.set(spawn.x, spawn.y, spawn.z);
+                }
             } catch (err) {
                 DebugLog.log(`Failed to load map ${targetMapId}: ${err.message}`, 'error');
             }
