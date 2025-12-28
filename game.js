@@ -1592,14 +1592,24 @@ async function submitScore(name) {
 
         if (response.ok) {
             const result = await response.json();
-            cachedLeaderboard = result.leaderboard;
-            playerRank = result.rank;
-            DebugLog.log(`Score submitted: rank #${result.rank} (verified: ${result.verifiedScore} pts)`, 'success');
-            return result;
+            if (result && Array.isArray(result.leaderboard)) {
+                cachedLeaderboard = result.leaderboard;
+                playerRank = result.rank;
+                DebugLog.log(`Score submitted: rank #${result.rank} (verified: ${result.verifiedScore} pts)`, 'success');
+                return result;
+            }
+            DebugLog.log('Score submission returned invalid data', 'warn');
+            return { added: false, rank: -1, leaderboard: cachedLeaderboard };
         } else {
-            const error = await response.json();
-            DebugLog.log(`Score submission rejected: ${error.error}`, 'warn');
-            return { added: false, rank: -1, leaderboard: cachedLeaderboard, error: error.error };
+            // Safely parse error response - may not be JSON
+            try {
+                const error = await response.json();
+                DebugLog.log(`Score submission rejected: ${error.error || 'Unknown error'}`, 'warn');
+                return { added: false, rank: -1, leaderboard: cachedLeaderboard, error: error.error };
+            } catch (parseError) {
+                DebugLog.log(`Score submission failed: HTTP ${response.status}`, 'warn');
+                return { added: false, rank: -1, leaderboard: cachedLeaderboard };
+            }
         }
     } catch (e) {
         DebugLog.log(`Failed to submit score: ${e.message}`, 'error');
