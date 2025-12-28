@@ -35,151 +35,62 @@ const collisionObjects = [];
 const destructibleObjects = [];
 
 // ==================== PROCEDURAL MAP GENERATION ====================
+// ==================== MAP LAYOUT ====================
+// Fixed, organized map layout for better zombie pathfinding
 const ProceduralMap = {
-    seed: 0,
-    layouts: ['standard', 'open', 'maze', 'fortress'],
     currentLayout: 'standard',
 
-    // Seeded random number generator
-    random() {
-        this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff;
-        return this.seed / 0x7fffffff;
-    },
-
-    // Shuffle array using current seed
-    shuffle(array) {
-        const arr = [...array];
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(this.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-        return arr;
-    },
-
-    // Initialize with a seed (can be wave number for variety)
     init(seed = Date.now()) {
-        this.seed = seed;
-        this.currentLayout = this.layouts[Math.floor(this.random() * this.layouts.length)];
+        // No longer random - use fixed layout
+        this.currentLayout = 'standard';
     },
 
-    // Generate randomized table positions
+    // Fixed table positions - organized in 2 rows with clear pathways
     getTablePositions() {
-        const basePositions = [
-            { x: -12, z: 5 }, { x: -6, z: 5 }, { x: 6, z: 5 }, { x: 12, z: 5 },
-            { x: -12, z: 12 }, { x: -6, z: 12 }, { x: 6, z: 12 }, { x: 12, z: 12 },
-            { x: 0, z: 18 }
+        return [
+            // Row 1 (z=6) - 3 tables with gaps
+            { x: -8, z: 6 },
+            { x: 0, z: 6 },
+            { x: 8, z: 6 },
+            // Row 2 (z=14) - 3 tables with gaps
+            { x: -8, z: 14 },
+            { x: 0, z: 14 },
+            { x: 8, z: 14 }
         ];
-
-        // Add random offset to positions
-        return basePositions.map(pos => ({
-            x: pos.x + (this.random() - 0.5) * 3,
-            z: pos.z + (this.random() - 0.5) * 3
-        }));
     },
 
-    // Generate randomized barrel/crate positions
+    // Fixed destructible prop positions - strategic cover spots
     getDestructiblePropPositions() {
-        const numBarrels = 6 + Math.floor(this.random() * 6);
-        const numCrates = 4 + Math.floor(this.random() * 5);
-        const barrels = [];
-        const crates = [];
-        const arenaSize = 24;
-
-        // Generate random barrel positions avoiding center and walls
-        for (let i = 0; i < numBarrels; i++) {
-            let x, z, valid;
-            let attempts = 0;
-            do {
-                x = (this.random() - 0.5) * arenaSize * 2;
-                z = (this.random() - 0.5) * arenaSize * 2;
-                // Avoid center spawn area and existing positions
-                valid = Math.sqrt(x * x + z * z) > 5 &&
-                        Math.abs(x) < arenaSize && Math.abs(z) < arenaSize;
-                for (const b of barrels) {
-                    if (Math.abs(b.x - x) < 2 && Math.abs(b.z - z) < 2) valid = false;
-                }
-                attempts++;
-            } while (!valid && attempts < 20);
-            if (valid) barrels.push({ x, z });
-        }
-
-        // Generate random crate positions
-        for (let i = 0; i < numCrates; i++) {
-            let x, z, valid;
-            let attempts = 0;
-            do {
-                x = (this.random() - 0.5) * arenaSize * 2;
-                z = (this.random() - 0.5) * arenaSize * 2;
-                valid = Math.sqrt(x * x + z * z) > 5 &&
-                        Math.abs(x) < arenaSize && Math.abs(z) < arenaSize;
-                for (const c of crates) {
-                    if (Math.abs(c.x - x) < 2 && Math.abs(c.z - z) < 2) valid = false;
-                }
-                for (const b of barrels) {
-                    if (Math.abs(b.x - x) < 2 && Math.abs(b.z - z) < 2) valid = false;
-                }
-                attempts++;
-            } while (!valid && attempts < 20);
-            if (valid) crates.push({ x, z });
-        }
-
-        return { barrels, crates };
+        return {
+            barrels: [
+                // Near play structure
+                { x: -14, z: -12 },
+                // Near kitchen
+                { x: 12, z: 10 },
+                // Near skeeball
+                { x: -10, z: -14 },
+                // Center area cover
+                { x: -4, z: 0 },
+                { x: 4, z: 0 }
+            ],
+            crates: [
+                // Near stage corners
+                { x: -10, z: -18 },
+                { x: 10, z: -18 },
+                // Near waiting area
+                { x: -6, z: 20 },
+                { x: 6, z: 20 }
+            ]
+        };
     },
 
-    // Generate barricade clusters based on layout
+    // Fixed barricade positions - no random placement
     getBarricadePositions() {
-        const barricades = [];
-
-        switch (this.currentLayout) {
-            case 'maze':
-                // Add wall-like barricade segments
-                for (let i = 0; i < 4; i++) {
-                    const angle = (i / 4) * Math.PI * 2 + this.random() * 0.5;
-                    const dist = 10 + this.random() * 5;
-                    barricades.push({
-                        x: Math.cos(angle) * dist,
-                        z: Math.sin(angle) * dist,
-                        rotation: angle + Math.PI / 2,
-                        length: 3 + this.random() * 4
-                    });
-                }
-                break;
-
-            case 'fortress':
-                // Central defensive position
-                for (let i = 0; i < 6; i++) {
-                    const angle = (i / 6) * Math.PI * 2;
-                    barricades.push({
-                        x: Math.cos(angle) * 8,
-                        z: Math.sin(angle) * 8,
-                        rotation: angle,
-                        length: 2
-                    });
-                }
-                break;
-
-            case 'open':
-                // Minimal barricades, just corners
-                [[15, 15], [-15, 15], [15, -15], [-15, -15]].forEach(([x, z]) => {
-                    if (this.random() > 0.3) {
-                        barricades.push({ x, z, rotation: this.random() * Math.PI, length: 2 });
-                    }
-                });
-                break;
-
-            default: // standard
-                // Some random cover positions
-                for (let i = 0; i < 3; i++) {
-                    barricades.push({
-                        x: (this.random() - 0.5) * 30,
-                        z: (this.random() - 0.5) * 30,
-                        rotation: this.random() * Math.PI,
-                        length: 2 + this.random() * 2
-                    });
-                }
-        }
-
-        return barricades;
+        return [
+            // Cover near center - player defensive positions
+            { x: -5, z: -5, rotation: 0, length: 2 },
+            { x: 5, z: -5, rotation: 0, length: 2 }
+        ];
     }
 };
 
@@ -2144,7 +2055,7 @@ function init() {
         initScreenOrientation();
         initThreeJS();
         initAudio();
-        createEnvironment();
+        initMapSystem();  // Initialize new map system
         createPlayer();
         initControls();
         initEventListeners();
@@ -3913,9 +3824,24 @@ function handlePickupRemoved(pickupId) {
     }
 }
 
-function handleWaveStart(message) {
+async function handleWaveStart(message) {
     GameState.wave = message.wave;
     GameState.zombiesRemaining = message.zombieCount;
+
+    // Handle map changes from server (multiplayer)
+    if (typeof MapManager !== 'undefined' && MapManager.currentMap && message.mapChanged) {
+        DebugLog.log(`Server: Map changing to ${message.mapId}`, 'game');
+        await MapManager.loadMap(message.mapId);
+
+        // Reposition player after map change (camera follows as child)
+        const spawn = MapManager.getPlayerSpawn();
+        player.position.set(spawn.x, spawn.y, spawn.z);
+    }
+
+    // Handle boss mode activation from server
+    if (typeof MapManager !== 'undefined' && message.bossMode) {
+        MapManager.activateBossMode();
+    }
 
     DebugLog.log(`Wave ${message.wave} starting with ${message.zombieCount} zombies!`, 'game');
     showWaveAnnouncement(message.wave);
@@ -3928,8 +3854,12 @@ function handleWaveComplete(message) {
     playerState.score += message.bonus;
     updateHUD();
 
-    // Show wave complete announcement
+    // Deactivate boss mode when wave completes
     const isBossWave = message.wave % 5 === 0;
+    if (isBossWave && typeof MapManager !== 'undefined') {
+        MapManager.deactivateBossMode();
+    }
+
     showWaveCompleteAnnouncement(message.wave, message.bonus, isBossWave);
 
     // Open shop if server says so (after announcement finishes)
@@ -5489,7 +5419,34 @@ function createPickupMesh(pickupData) {
     return group;
 }
 
-// ==================== ENVIRONMENT ====================
+// ==================== MAP SYSTEM INITIALIZATION ====================
+function initMapSystem() {
+    // Check if MapManager is available (new map system)
+    if (typeof MapManager !== 'undefined') {
+        DebugLog.log('Initializing new map system...', 'info');
+
+        // Initialize MapManager with scene
+        MapManager.init(scene);
+
+        // Register all maps
+        MapManager.registerMap('dining_hall', new DiningHallMap());
+        MapManager.registerMap('arcade_zone', new ArcadeZoneMap());
+        MapManager.registerMap('backstage', new BackstageMap());
+        MapManager.registerMap('kitchen', new KitchenMap());
+        MapManager.registerMap('party_room', new PartyRoomMap());
+
+        // Load the first map (dining hall for wave 1)
+        MapManager.loadMap('dining_hall');
+
+        DebugLog.log('Map system initialized with 5 maps', 'success');
+    } else {
+        // Fall back to legacy environment
+        DebugLog.log('MapManager not found, using legacy environment', 'warn');
+        createEnvironment();
+    }
+}
+
+// ==================== ENVIRONMENT (LEGACY) ====================
 function createEnvironment() {
     // Initialize procedural map with random seed
     ProceduralMap.init(Date.now());
@@ -5776,24 +5733,17 @@ function createPillars() {
 }
 
 function createArcadeMachines() {
+    // Arcade machines along walls only - no center row for clear pathways
     const positions = [
-        // Left wall
-        { x: -25, z: -18, rot: Math.PI / 2 },
+        // Left wall - spaced for pathways
+        { x: -25, z: -16, rot: Math.PI / 2 },
         { x: -25, z: -10, rot: Math.PI / 2 },
-        { x: -25, z: -2, rot: Math.PI / 2 },
+        { x: -25, z: -4, rot: Math.PI / 2 },
         { x: -25, z: 6, rot: Math.PI / 2 },
-        { x: -25, z: 14, rot: Math.PI / 2 },
-        // Right wall
-        { x: 25, z: -18, rot: -Math.PI / 2 },
+        // Right wall - spaced for pathways
+        { x: 25, z: -16, rot: -Math.PI / 2 },
         { x: 25, z: -10, rot: -Math.PI / 2 },
-        { x: 25, z: -2, rot: -Math.PI / 2 },
-        { x: 25, z: 6, rot: -Math.PI / 2 },
-        { x: 25, z: 14, rot: -Math.PI / 2 },
-        // Center arcade row
-        { x: -8, z: -12, rot: 0 },
-        { x: -4, z: -12, rot: 0 },
-        { x: 4, z: -12, rot: 0 },
-        { x: 8, z: -12, rot: 0 }
+        { x: 25, z: 6, rot: -Math.PI / 2 }
     ];
 
     const arcadeColors = [0x2a1a4a, 0x4a2a1a, 0x1a3a2a, 0x4a1a1a, 0x1a1a4a];
@@ -5897,30 +5847,13 @@ function createArcadeMachines() {
         };
         collisionObjects.push(group);
 
-        // Make center arcade machines destructible (indices 10-13)
-        if (i >= 10 && i <= 13) {
-            destructibleObjects.push({
-                mesh: group,
-                collision: group.userData.collision,
-                health: 150,
-                maxHealth: 150,
-                material: 'plastic',
-                height: 1.9,
-                size: 1.0,
-                destroyed: false
-            });
-        }
-
         scene.add(group);
     });
 }
 
 function createTables() {
-    const positions = [
-        { x: -12, z: 5 }, { x: -6, z: 5 }, { x: 6, z: 5 }, { x: 12, z: 5 },
-        { x: -12, z: 12 }, { x: -6, z: 12 }, { x: 6, z: 12 }, { x: 12, z: 12 },
-        { x: 0, z: 18 }
-    ];
+    // Use fixed positions from ProceduralMap for organized layout
+    const positions = ProceduralMap.getTablePositions();
 
     positions.forEach(pos => {
         const group = new THREE.Group();
@@ -10441,6 +10374,15 @@ function startSinglePlayerGame() {
     GameState.totalScore = 0;
     GameState.lastZombieId = 0;
 
+    // Reset map to first map for wave 1
+    if (typeof MapManager !== 'undefined' && MapManager.currentMap) {
+        MapManager.deactivateBossMode();
+        MapManager.loadMap('dining_hall').then(() => {
+            const spawn = MapManager.getPlayerSpawn();
+            player.position.set(spawn.x, spawn.y, spawn.z);
+        });
+    }
+
     // Reset weapon upgrades for new game
     WeaponUpgrades.reset();
 
@@ -10708,11 +10650,29 @@ const WaveSystem = {
     }
 };
 
-function startSinglePlayerWave() {
+async function startSinglePlayerWave() {
     // Clear any existing spawn timer first (safety check)
     if (GameState.spawnTimer) {
         clearTimeout(GameState.spawnTimer);
         GameState.spawnTimer = null;
+    }
+
+    // Handle map transitions based on wave
+    if (typeof MapManager !== 'undefined' && MapManager.currentMap) {
+        const targetMapId = MapManager.getMapForWave(GameState.wave);
+        if (targetMapId !== MapManager.currentMapId) {
+            DebugLog.log(`Wave ${GameState.wave} - Changing map to ${targetMapId}`, 'game');
+            await MapManager.loadMap(targetMapId);
+
+            // Reposition player after map change (camera follows as child)
+            const spawn = MapManager.getPlayerSpawn();
+            player.position.set(spawn.x, spawn.y, spawn.z);
+        }
+
+        // Activate boss mode if this is a boss wave
+        if (MapManager.isBossWave(GameState.wave)) {
+            MapManager.activateBossMode();
+        }
     }
 
     // Check if this is a boss wave
@@ -11250,43 +11210,67 @@ function bossSummonMinions(boss) {
 
 function spawnSinglePlayerZombie() {
     const id = `zombie_${++GameState.lastZombieId}`;
-    const arenaEdge = CONFIG.arena.width / 2 - 2;
     const minPlayerDistance = 5; // Minimum distance from player
-    const maxAttempts = 10;
-
-    // Try to find a valid spawn position
     let position = null;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const side = Math.floor(Math.random() * 4);
-        let testPos = { x: 0, y: 0, z: 0 };
 
-        switch (side) {
-            case 0: testPos = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.8, y: 0, z: -arenaEdge }; break;
-            case 1: testPos = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.8, y: 0, z: arenaEdge }; break;
-            case 2: testPos = { x: -arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
-            case 3: testPos = { x: arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
-        }
+    // Use MapManager spawn points if available
+    if (typeof MapManager !== 'undefined' && MapManager.currentMap) {
+        const spawns = MapManager.getZombieSpawns();
+        if (spawns.length > 0) {
+            // Pick a random spawn point that's far enough from player
+            const validSpawns = spawns.filter(spawn => {
+                const dx = spawn.x - player.position.x;
+                const dz = spawn.z - player.position.z;
+                return Math.sqrt(dx * dx + dz * dz) >= minPlayerDistance;
+            });
 
-        // Check distance from player
-        const dx = testPos.x - player.position.x;
-        const dz = testPos.z - player.position.z;
-        const distToPlayer = Math.sqrt(dx * dx + dz * dz);
-
-        if (distToPlayer >= minPlayerDistance) {
-            position = testPos;
-            break;
+            if (validSpawns.length > 0) {
+                const spawn = validSpawns[Math.floor(Math.random() * validSpawns.length)];
+                position = { x: spawn.x, y: 0, z: spawn.z };
+            } else {
+                // Use any spawn if none are far enough
+                const spawn = spawns[Math.floor(Math.random() * spawns.length)];
+                position = { x: spawn.x, y: 0, z: spawn.z };
+            }
         }
     }
 
-    // If no valid position found after max attempts, use farthest edge from player
+    // Fallback to legacy spawn logic if MapManager not available
     if (!position) {
-        const px = player.position.x;
-        const pz = player.position.z;
-        // Spawn on the edge farthest from player
-        if (Math.abs(px) > Math.abs(pz)) {
-            position = { x: px > 0 ? -arenaEdge : arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.6 };
-        } else {
-            position = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.6, y: 0, z: pz > 0 ? -arenaEdge : arenaEdge };
+        const arenaEdge = CONFIG.arena.width / 2 - 2;
+        const maxAttempts = 10;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const side = Math.floor(Math.random() * 4);
+            let testPos = { x: 0, y: 0, z: 0 };
+
+            switch (side) {
+                case 0: testPos = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.8, y: 0, z: -arenaEdge }; break;
+                case 1: testPos = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.8, y: 0, z: arenaEdge }; break;
+                case 2: testPos = { x: -arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
+                case 3: testPos = { x: arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
+            }
+
+            const dx = testPos.x - player.position.x;
+            const dz = testPos.z - player.position.z;
+            const distToPlayer = Math.sqrt(dx * dx + dz * dz);
+
+            if (distToPlayer >= minPlayerDistance) {
+                position = testPos;
+                break;
+            }
+        }
+
+        // If still no valid position, use farthest edge from player
+        if (!position) {
+            const px = player.position.x;
+            const pz = player.position.z;
+            const arenaEdge = CONFIG.arena.width / 2 - 2;
+            if (Math.abs(px) > Math.abs(pz)) {
+                position = { x: px > 0 ? -arenaEdge : arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.6 };
+            } else {
+                position = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.6, y: 0, z: pz > 0 ? -arenaEdge : arenaEdge };
+            }
         }
     }
 
@@ -12268,6 +12252,11 @@ function killSinglePlayerZombie(zombieId, isHeadshot) {
     if (waveComplete) {
         setTimeout(() => {
             if (GameState.isRunning) {
+                // Deactivate boss mode when boss wave completes
+                if (isBossWave && typeof MapManager !== 'undefined') {
+                    MapManager.deactivateBossMode();
+                }
+
                 const waveBonus = isBossWave
                     ? 2000 + GameState.wave * 200 // Bigger bonus for boss waves
                     : 500 + GameState.wave * 100;

@@ -236,9 +236,362 @@ function log(message, type = 'INFO') {
     console.log(`${colors[type] || ''}[${timestamp}] [${type}] ${message}${reset}`);
 }
 
+// ==================== NAVIGATION GRID ====================
+const NavGrid = {
+    cellSize: 1.0,
+    gridWidth: 60,
+    gridHeight: 60,
+    offsetX: -30,
+    offsetZ: -30,
+    grid: null,
+    initialized: false,
+
+    init() {
+        this.grid = [];
+        for (let z = 0; z < this.gridHeight; z++) {
+            this.grid[z] = new Array(this.gridWidth).fill(0);
+        }
+        // Mark arena boundaries as blocked
+        for (let x = 0; x < this.gridWidth; x++) {
+            this.grid[0][x] = 1;
+            this.grid[this.gridHeight - 1][x] = 1;
+        }
+        for (let z = 0; z < this.gridHeight; z++) {
+            this.grid[z][0] = 1;
+            this.grid[z][this.gridWidth - 1] = 1;
+        }
+        this.initialized = true;
+        log(`NavGrid initialized: ${this.gridWidth}x${this.gridHeight}`, 'INFO');
+    },
+
+    worldToGridX(x) {
+        return Math.floor((x - this.offsetX) / this.cellSize);
+    },
+
+    worldToGridZ(z) {
+        return Math.floor((z - this.offsetZ) / this.cellSize);
+    },
+
+    gridToWorldX(gx) {
+        return gx * this.cellSize + this.offsetX + this.cellSize / 2;
+    },
+
+    gridToWorldZ(gz) {
+        return gz * this.cellSize + this.offsetZ + this.cellSize / 2;
+    },
+
+    isWalkable(gx, gz) {
+        if (gx < 0 || gx >= this.gridWidth || gz < 0 || gz >= this.gridHeight) {
+            return false;
+        }
+        return this.grid[gz][gx] === 0;
+    },
+
+    markBlocked(minX, maxX, minZ, maxZ) {
+        const gMinX = Math.max(0, this.worldToGridX(minX) - 1);
+        const gMaxX = Math.min(this.gridWidth - 1, this.worldToGridX(maxX) + 1);
+        const gMinZ = Math.max(0, this.worldToGridZ(minZ) - 1);
+        const gMaxZ = Math.min(this.gridHeight - 1, this.worldToGridZ(maxZ) + 1);
+
+        for (let gz = gMinZ; gz <= gMaxZ; gz++) {
+            for (let gx = gMinX; gx <= gMaxX; gx++) {
+                this.grid[gz][gx] = 1;
+            }
+        }
+    },
+
+    buildFromObstacles(obstacles) {
+        // Reset grid
+        for (let z = 0; z < this.gridHeight; z++) {
+            for (let x = 0; x < this.gridWidth; x++) {
+                // Keep arena boundaries blocked
+                if (z === 0 || z === this.gridHeight - 1 || x === 0 || x === this.gridWidth - 1) {
+                    this.grid[z][x] = 1;
+                } else {
+                    this.grid[z][x] = 0;
+                }
+            }
+        }
+        // Mark obstacles
+        obstacles.forEach(obs => {
+            this.markBlocked(obs.minX, obs.maxX, obs.minZ, obs.maxZ);
+        });
+        log(`NavGrid built with ${obstacles.length} obstacles`, 'INFO');
+    }
+};
+
+// ==================== A* PATHFINDER ====================
+const Pathfinder = {
+    pathCache: new Map(),
+    cacheTimeout: 500, // ms
+
+    clearCache() {
+        this.pathCache.clear();
+    },
+
+    findPath(startX, startZ, goalX, goalZ) {
+        if (!NavGrid.initialized) return null;
+
+        const startGX = NavGrid.worldToGridX(startX);
+        const startGZ = NavGrid.worldToGridZ(startZ);
+        const goalGX = NavGrid.worldToGridX(goalX);
+        const goalGZ = NavGrid.worldToGridZ(goalZ);
+
+        // Check if start/goal are valid
+        if (!NavGrid.isWalkable(startGX, startGZ)) {
+            // Find nearest walkable cell to start
+            const nearest = this.findNearestWalkable(startGX, startGZ);
+            if (!nearest) return null;
+        }
+
+        if (!NavGrid.isWalkable(goalGX, goalGZ)) {
+            // Find nearest walkable cell to goal
+            const nearest = this.findNearestWalkable(goalGX, goalGZ);
+            if (!nearest) return null;
+        }
+
+        // A* implementation
+        const openSet = [];
+        const closedSet = new Set();
+        const cameFrom = new Map();
+        const gScore = new Map();
+        const fScore = new Map();
+
+        const startKey = `${startGX},${startGZ}`;
+        const goalKey = `${goalGX},${goalGZ}`;
+
+        gScore.set(startKey, 0);
+        fScore.set(startKey, this.heuristic(startGX, startGZ, goalGX, goalGZ));
+        openSet.push({ x: startGX, z: startGZ, f: fScore.get(startKey) });
+
+        const neighbors = [
+            { dx: 0, dz: -1, cost: 1 },
+            { dx: 0, dz: 1, cost: 1 },
+            { dx: -1, dz: 0, cost: 1 },
+            { dx: 1, dz: 0, cost: 1 },
+            { dx: -1, dz: -1, cost: 1.414 },
+            { dx: 1, dz: -1, cost: 1.414 },
+            { dx: -1, dz: 1, cost: 1.414 },
+            { dx: 1, dz: 1, cost: 1.414 }
+        ];
+
+        let iterations = 0;
+        const maxIterations = 2000;
+
+        while (openSet.length > 0 && iterations < maxIterations) {
+            iterations++;
+
+            // Get node with lowest fScore
+            openSet.sort((a, b) => a.f - b.f);
+            const current = openSet.shift();
+            const currentKey = `${current.x},${current.z}`;
+
+            if (current.x === goalGX && current.z === goalGZ) {
+                // Reconstruct path
+                return this.reconstructPath(cameFrom, current, startGX, startGZ);
+            }
+
+            closedSet.add(currentKey);
+
+            for (const neighbor of neighbors) {
+                const nx = current.x + neighbor.dx;
+                const nz = current.z + neighbor.dz;
+                const neighborKey = `${nx},${nz}`;
+
+                if (closedSet.has(neighborKey)) continue;
+                if (!NavGrid.isWalkable(nx, nz)) continue;
+
+                // For diagonal movement, check if we can cut the corner
+                if (neighbor.dx !== 0 && neighbor.dz !== 0) {
+                    if (!NavGrid.isWalkable(current.x + neighbor.dx, current.z) ||
+                        !NavGrid.isWalkable(current.x, current.z + neighbor.dz)) {
+                        continue;
+                    }
+                }
+
+                const tentativeG = gScore.get(currentKey) + neighbor.cost;
+
+                if (!gScore.has(neighborKey) || tentativeG < gScore.get(neighborKey)) {
+                    cameFrom.set(neighborKey, current);
+                    gScore.set(neighborKey, tentativeG);
+                    const f = tentativeG + this.heuristic(nx, nz, goalGX, goalGZ);
+                    fScore.set(neighborKey, f);
+
+                    const existing = openSet.find(n => n.x === nx && n.z === nz);
+                    if (existing) {
+                        existing.f = f;
+                    } else {
+                        openSet.push({ x: nx, z: nz, f: f });
+                    }
+                }
+            }
+        }
+
+        return null; // No path found
+    },
+
+    heuristic(x1, z1, x2, z2) {
+        // Euclidean distance
+        const dx = x2 - x1;
+        const dz = z2 - z1;
+        return Math.sqrt(dx * dx + dz * dz);
+    },
+
+    reconstructPath(cameFrom, goal, startX, startZ) {
+        const path = [];
+        let current = goal;
+
+        while (current) {
+            path.unshift({
+                x: NavGrid.gridToWorldX(current.x),
+                z: NavGrid.gridToWorldZ(current.z)
+            });
+            const key = `${current.x},${current.z}`;
+            current = cameFrom.get(key);
+        }
+
+        // Smooth path - remove unnecessary waypoints
+        return this.smoothPath(path);
+    },
+
+    smoothPath(path) {
+        if (path.length <= 2) return path;
+
+        const smoothed = [path[0]];
+        let i = 0;
+
+        while (i < path.length - 1) {
+            let furthest = i + 1;
+            for (let j = i + 2; j < path.length; j++) {
+                if (this.hasLineOfSight(path[i].x, path[i].z, path[j].x, path[j].z)) {
+                    furthest = j;
+                }
+            }
+            smoothed.push(path[furthest]);
+            i = furthest;
+        }
+
+        return smoothed;
+    },
+
+    hasLineOfSight(x1, z1, x2, z2) {
+        const dx = x2 - x1;
+        const dz = z2 - z1;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        const steps = Math.ceil(dist / 0.5);
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const x = x1 + dx * t;
+            const z = z1 + dz * t;
+            const gx = NavGrid.worldToGridX(x);
+            const gz = NavGrid.worldToGridZ(z);
+            if (!NavGrid.isWalkable(gx, gz)) {
+                return false;
+            }
+        }
+        return true;
+    },
+
+    findNearestWalkable(gx, gz) {
+        const maxRadius = 5;
+        for (let r = 1; r <= maxRadius; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dz = -r; dz <= r; dz++) {
+                    if (Math.abs(dx) === r || Math.abs(dz) === r) {
+                        if (NavGrid.isWalkable(gx + dx, gz + dz)) {
+                            return { x: gx + dx, z: gz + dz };
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+};
+
+// ==================== MAP OBSTACLES ====================
+// Define obstacles matching the client map layout
+const MAP_OBSTACLES = [
+    // Stage area (south)
+    { minX: -7.5, maxX: 7.5, minZ: -25, maxZ: -20 },
+
+    // Prize counter (southeast)
+    { minX: 16, maxX: 24, minZ: -25, maxZ: -20 },
+
+    // Skeeball lanes (south-left)
+    { minX: -12, maxX: -4, minZ: -22, maxZ: -16 },
+
+    // Kitchen counter (east)
+    { minX: 14, maxX: 22, minZ: 12, maxZ: 22 },
+
+    // Party rooms (east)
+    { minX: 20, maxX: 26, minZ: -8, maxZ: 2 },
+
+    // Ball pit (west)
+    { minX: -24, maxX: -16, minZ: 12, maxZ: 20 },
+
+    // Play structure (southwest)
+    { minX: -24, maxX: -16, minZ: -20, maxZ: -10 },
+
+    // Restrooms (west)
+    { minX: -26, maxX: -18, minZ: -6, maxZ: 2 },
+
+    // Arcade machines - left wall
+    { minX: -26, maxX: -24, minZ: -18, maxZ: -14 },
+    { minX: -26, maxX: -24, minZ: -12, maxZ: -8 },
+    { minX: -26, maxX: -24, minZ: -6, maxZ: -2 },
+    { minX: -26, maxX: -24, minZ: 4, maxZ: 8 },
+
+    // Arcade machines - right wall
+    { minX: 24, maxX: 26, minZ: -18, maxZ: -14 },
+    { minX: 24, maxX: 26, minZ: -12, maxZ: -8 },
+    { minX: 24, maxX: 26, minZ: 4, maxZ: 8 },
+
+    // Dining tables (center area) - 2 rows, 3 tables each
+    { minX: -10, maxX: -6, minZ: 4, maxZ: 8 },
+    { minX: -2, maxX: 2, minZ: 4, maxZ: 8 },
+    { minX: 6, maxX: 10, minZ: 4, maxZ: 8 },
+    { minX: -10, maxX: -6, minZ: 12, maxZ: 16 },
+    { minX: -2, maxX: 2, minZ: 12, maxZ: 16 },
+    { minX: 6, maxX: 10, minZ: 12, maxZ: 16 },
+
+    // Pillars
+    { minX: -16, maxX: -14, minZ: -16, maxZ: -14 },
+    { minX: 14, maxX: 16, minZ: -16, maxZ: -14 },
+    { minX: -16, maxX: -14, minZ: 14, maxZ: 16 },
+    { minX: 14, maxX: 16, minZ: 14, maxZ: 16 },
+
+    // Waiting area benches (north)
+    { minX: -8, maxX: 8, minZ: 22, maxZ: 24 }
+];
+
+// Initialize NavGrid and build from obstacles
+NavGrid.init();
+NavGrid.buildFromObstacles(MAP_OBSTACLES);
+
 // ==================== MULTI-LOBBY SYSTEM ====================
 const gameRooms = new Map(); // roomId -> GameRoom
 const playerRooms = new Map(); // playerId -> roomId
+
+// Map configuration - which map for which waves
+const WAVE_MAP_CONFIG = [
+    { waves: [1, 2], mapId: 'dining_hall' },
+    { waves: [3, 4], mapId: 'arcade_zone' },
+    { waves: [5, 6], mapId: 'backstage' },
+    { waves: [7, 8], mapId: 'kitchen' },
+    { waves: [9, 10, 11, 12], mapId: 'party_room' }
+];
+
+function getMapForWave(wave) {
+    for (const config of WAVE_MAP_CONFIG) {
+        if (config.waves.includes(wave)) {
+            return config.mapId;
+        }
+    }
+    // Default to party room for high waves
+    return 'party_room';
+}
 
 function createGameRoom() {
     const roomId = uuidv4();
@@ -263,7 +616,9 @@ function createGameRoom() {
         shopTimeout: null,
         countdownTimer: null,
         countdownSeconds: 0,
-        gameLoopInterval: null
+        gameLoopInterval: null,
+        currentMapId: 'dining_hall',  // Track current map
+        bossMode: false               // Track boss mode state
     };
     gameRooms.set(roomId, room);
     log(`Created new game room: ${roomId}`, 'INFO');
@@ -504,35 +859,104 @@ function updateZombies() {
 
         zombie.targetPlayerId = closestPlayer.id;
 
-        // Calculate direction to player
+        // Calculate direct distance to player
         const dx = closestPlayer.position.x - zombie.position.x;
         const dz = closestPlayer.position.z - zombie.position.z;
         const distance = Math.sqrt(dx * dx + dz * dz);
 
-        // Face player
-        zombie.rotation = Math.atan2(dx, dz);
+        // Attack if close enough
+        if (distance <= CONFIG.zombie.attackRange) {
+            zombie.isAttacking = true;
+            // Face player directly when attacking
+            zombie.rotation = Math.atan2(dx, dz);
 
-        // Move towards player or attack
-        if (distance > CONFIG.zombie.attackRange) {
-            zombie.isAttacking = false;
-            const moveX = (dx / distance) * zombie.speed * delta;
-            const moveZ = (dz / distance) * zombie.speed * delta;
-            zombie.position.x += moveX;
-            zombie.position.z += moveZ;
-        } else {
-            // Attack player
             if (now - zombie.lastAttack > CONFIG.zombie.attackCooldown) {
                 zombie.lastAttack = now;
-                zombie.isAttacking = true;
                 damagePlayer(closestPlayer.id, zombie.damage);
 
-                // Broadcast zombie attack animation
                 broadcast({
                     type: 'zombieAttack',
                     zombieId: zombie.id,
                     targetId: closestPlayer.id
                 });
             }
+            return;
+        }
+
+        zombie.isAttacking = false;
+
+        // Initialize path data if needed
+        if (!zombie.path) {
+            zombie.path = null;
+            zombie.pathIndex = 0;
+            zombie.lastPathUpdate = 0;
+            zombie.lastTargetPos = null;
+        }
+
+        // Check if we need to recalculate path
+        const pathAge = now - zombie.lastPathUpdate;
+        const targetMoved = zombie.lastTargetPos &&
+            (Math.abs(closestPlayer.position.x - zombie.lastTargetPos.x) > 3 ||
+             Math.abs(closestPlayer.position.z - zombie.lastTargetPos.z) > 3);
+
+        if (!zombie.path || pathAge > 500 || targetMoved || zombie.pathIndex >= zombie.path.length) {
+            // Calculate new path
+            const newPath = Pathfinder.findPath(
+                zombie.position.x, zombie.position.z,
+                closestPlayer.position.x, closestPlayer.position.z
+            );
+
+            if (newPath && newPath.length > 1) {
+                zombie.path = newPath;
+                zombie.pathIndex = 1; // Skip first waypoint (current position)
+                zombie.lastPathUpdate = now;
+                zombie.lastTargetPos = { x: closestPlayer.position.x, z: closestPlayer.position.z };
+            } else {
+                // No path found - try direct movement as fallback
+                zombie.path = null;
+            }
+        }
+
+        // Move along path or directly
+        let targetX, targetZ;
+
+        if (zombie.path && zombie.pathIndex < zombie.path.length) {
+            const waypoint = zombie.path[zombie.pathIndex];
+            targetX = waypoint.x;
+            targetZ = waypoint.z;
+
+            // Check if reached waypoint
+            const wpDx = targetX - zombie.position.x;
+            const wpDz = targetZ - zombie.position.z;
+            const wpDist = Math.sqrt(wpDx * wpDx + wpDz * wpDz);
+
+            if (wpDist < 1.0) {
+                zombie.pathIndex++;
+                if (zombie.pathIndex < zombie.path.length) {
+                    targetX = zombie.path[zombie.pathIndex].x;
+                    targetZ = zombie.path[zombie.pathIndex].z;
+                }
+            }
+        } else {
+            // Direct fallback (when no path available)
+            targetX = closestPlayer.position.x;
+            targetZ = closestPlayer.position.z;
+        }
+
+        // Move towards target
+        const moveDx = targetX - zombie.position.x;
+        const moveDz = targetZ - zombie.position.z;
+        const moveDist = Math.sqrt(moveDx * moveDx + moveDz * moveDz);
+
+        if (moveDist > 0.1) {
+            // Face movement direction
+            zombie.rotation = Math.atan2(moveDx, moveDz);
+
+            // Move
+            const moveX = (moveDx / moveDist) * zombie.speed * delta;
+            const moveZ = (moveDz / moveDist) * zombie.speed * delta;
+            zombie.position.x += moveX;
+            zombie.position.z += moveZ;
         }
     });
 }
@@ -711,12 +1135,29 @@ function startWave() {
     GameState.zombiesRemaining = zombieCount;
     GameState.zombiesSpawned = 0;
 
+    // Check if map needs to change
+    const targetMapId = getMapForWave(GameState.wave);
+    const mapChanged = targetMapId !== GameState.currentMapId;
+    if (mapChanged) {
+        GameState.currentMapId = targetMapId;
+        log(`Map changed to ${targetMapId} for wave ${GameState.wave}`, 'GAME');
+    }
+
+    // Check if this is a boss wave (every 5th wave starting at 5)
+    const isBossWave = GameState.wave >= 5 && GameState.wave % 5 === 0;
+    if (isBossWave) {
+        GameState.bossMode = true;
+    }
+
     log(`Starting Wave ${GameState.wave} with ${zombieCount} zombies`, 'GAME');
 
     broadcast({
         type: 'waveStart',
         wave: GameState.wave,
-        zombieCount: zombieCount
+        zombieCount: zombieCount,
+        mapId: GameState.currentMapId,
+        mapChanged: mapChanged,
+        bossMode: GameState.bossMode
     });
 
     // Spawn zombies gradually
@@ -738,6 +1179,11 @@ function startWave() {
 }
 
 function nextWave() {
+    // Deactivate boss mode when wave completes
+    if (GameState.bossMode) {
+        GameState.bossMode = false;
+    }
+
     GameState.wave++;
     GameState.totalScore += CONFIG.scoring.waveBonus;
 
