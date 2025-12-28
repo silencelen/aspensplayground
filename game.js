@@ -4074,14 +4074,18 @@ function handleRemotePlayerShoot(message) {
 }
 
 function handlePlayerDamaged(message) {
-    playerState.health = message.health;
+    if (typeof message.health === 'number') {
+        playerState.health = message.health;
+    }
 
     // Red flash effect
     const overlay = document.getElementById('damage-overlay');
-    overlay.style.opacity = '0.5';
-    setTimeout(() => {
-        overlay.style.opacity = '0';
-    }, 200);
+    if (overlay) {
+        overlay.style.opacity = '0.5';
+        setTimeout(() => {
+            overlay.style.opacity = '0';
+        }, 200);
+    }
 
     // Screen shake
     screenShake();
