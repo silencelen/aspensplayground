@@ -3979,11 +3979,15 @@ async function handleWaveStart(message) {
     // Handle map changes from server (multiplayer)
     if (typeof MapManager !== 'undefined' && MapManager.currentMap && message.mapChanged) {
         DebugLog.log(`Server: Map changing to ${message.mapId}`, 'game');
-        await MapManager.loadMap(message.mapId);
+        try {
+            await MapManager.loadMap(message.mapId);
 
-        // Reposition player after map change (camera follows as child)
-        const spawn = MapManager.getPlayerSpawn();
-        player.position.set(spawn.x, spawn.y, spawn.z);
+            // Reposition player after map change (camera follows as child)
+            const spawn = MapManager.getPlayerSpawn();
+            player.position.set(spawn.x, spawn.y, spawn.z);
+        } catch (err) {
+            DebugLog.log(`Failed to load map ${message.mapId}: ${err.message}`, 'error');
+        }
     }
 
     // Handle boss mode activation from server
@@ -5585,7 +5589,9 @@ function initMapSystem() {
         MapManager.registerMap('party_room', new PartyRoomMap());
 
         // Load the first map (dining hall for wave 1)
-        MapManager.loadMap('dining_hall');
+        MapManager.loadMap('dining_hall').catch(err => {
+            DebugLog.log(`Failed to load initial map: ${err.message}`, 'error');
+        });
 
         DebugLog.log('Map system initialized with 5 maps', 'success');
     } else {
@@ -10562,6 +10568,8 @@ function startSinglePlayerGame() {
         MapManager.loadMap('dining_hall').then(() => {
             const spawn = MapManager.getPlayerSpawn();
             player.position.set(spawn.x, spawn.y, spawn.z);
+        }).catch(err => {
+            DebugLog.log(`Failed to load map: ${err.message}`, 'error');
         });
     }
 
@@ -10845,11 +10853,15 @@ async function startSinglePlayerWave() {
         const targetMapId = MapManager.getMapForWave(GameState.wave);
         if (targetMapId !== MapManager.currentMapId) {
             DebugLog.log(`Wave ${GameState.wave} - Changing map to ${targetMapId}`, 'game');
-            await MapManager.loadMap(targetMapId);
+            try {
+                await MapManager.loadMap(targetMapId);
 
-            // Reposition player after map change (camera follows as child)
-            const spawn = MapManager.getPlayerSpawn();
-            player.position.set(spawn.x, spawn.y, spawn.z);
+                // Reposition player after map change (camera follows as child)
+                const spawn = MapManager.getPlayerSpawn();
+                player.position.set(spawn.x, spawn.y, spawn.z);
+            } catch (err) {
+                DebugLog.log(`Failed to load map ${targetMapId}: ${err.message}`, 'error');
+            }
         }
 
         // Activate boss mode if this is a boss wave
