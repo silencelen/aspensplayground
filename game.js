@@ -3250,14 +3250,94 @@ function connectToServer() {
         document.getElementById('ready-button').disabled = true;
     };
 
-    socket.onmessage = (event) => {
+    socket.onmessage = async (event) => {
         try {
-            const message = JSON.parse(event.data);
-            handleServerMessage(message);
+            // Check if message is binary (ArrayBuffer or Blob)
+            if (event.data instanceof ArrayBuffer) {
+                handleBinaryMessage(new DataView(event.data));
+            } else if (event.data instanceof Blob) {
+                const buffer = await event.data.arrayBuffer();
+                handleBinaryMessage(new DataView(buffer));
+            } else {
+                // JSON message
+                const message = JSON.parse(event.data);
+                handleServerMessage(message);
+            }
         } catch (e) {
             DebugLog.log(`Error parsing server message: ${e.message}`, 'error');
         }
     };
+}
+
+// ==================== BINARY PROTOCOL DECODER ====================
+const BinaryMsgType = { SYNC: 1, ZOMBIE_SPAWN: 2, ZOMBIE_KILL: 3, PLAYER_POS: 4 };
+const ZombieTypes = ['normal', 'runner', 'tank', 'boss'];
+
+function handleBinaryMessage(view) {
+    const msgType = view.getUint8(0);
+
+    if (msgType === BinaryMsgType.SYNC) {
+        decodeBinarySync(view);
+    }
+}
+
+function decodeBinarySync(view) {
+    let offset = 1;
+
+    // Header
+    const zombieCount = view.getUint16(offset, true); offset += 2;
+    offset += 2; // reserved
+
+    // Game state
+    const wave = view.getUint16(offset, true); offset += 2;
+    const zombiesRemaining = view.getUint16(offset, true); offset += 2;
+    const totalKills = view.getUint32(offset, true); offset += 4;
+    const totalScore = view.getUint32(offset, true); offset += 4;
+    offset += 4; // reserved
+
+    // Update game state
+    GameState.wave = wave;
+    GameState.zombiesRemaining = zombiesRemaining;
+    GameState.totalKills = totalKills;
+    GameState.totalScore = totalScore;
+
+    // Create zombie ID mapping for this sync
+    const zombieIds = Array.from(zombies.keys());
+
+    // Decode zombies
+    for (let i = 0; i < zombieCount; i++) {
+        const idx = view.getUint16(offset, true); offset += 2;
+        const typeCode = view.getUint8(offset); offset += 1;
+        const isAlive = view.getUint8(offset) === 1; offset += 1;
+        const x = view.getFloat32(offset, true); offset += 4;
+        const z = view.getFloat32(offset, true); offset += 4;
+        const rotation = view.getFloat32(offset, true); offset += 4;
+        const health = view.getUint16(offset, true); offset += 2;
+
+        // Find matching zombie by index or create position reference
+        const zombieId = zombieIds[idx];
+        if (zombieId) {
+            const zombie = zombies.get(zombieId);
+            if (zombie) {
+                zombie.position.x = x;
+                zombie.position.z = z;
+                zombie.rotation = rotation;
+                zombie.health = health;
+                zombie.isAlive = isAlive;
+                zombie.type = ZombieTypes[typeCode] || 'normal';
+
+                // Update mesh position
+                if (zombie.mesh) {
+                    zombie.mesh.position.x = x;
+                    zombie.mesh.position.z = z;
+                    zombie.mesh.rotation.y = rotation;
+                    zombie.mesh.visible = isAlive;
+                }
+            }
+        }
+    }
+
+    updateHUD();
 }
 
 function handleServerMessage(message) {

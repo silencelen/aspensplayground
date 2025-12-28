@@ -510,65 +510,157 @@ const Pathfinder = {
     }
 };
 
-// ==================== MAP OBSTACLES ====================
-// Define obstacles matching the client map layout
-const MAP_OBSTACLES = [
-    // Stage area (south)
-    { minX: -7.5, maxX: 7.5, minZ: -25, maxZ: -20 },
+// ==================== MAP OBSTACLES PER MAP ====================
+// Obstacle data for each map - synced with client map definitions
+const MAP_OBSTACLES = {
+    dining_hall: [
+        // Tables in diamond pattern
+        { minX: -9.5, maxX: -6.5, minZ: -9.5, maxZ: -6.5 },
+        { minX: 6.5, maxX: 9.5, minZ: -9.5, maxZ: -6.5 },
+        { minX: -9.5, maxX: -6.5, minZ: 6.5, maxZ: 9.5 },
+        { minX: 6.5, maxX: 9.5, minZ: 6.5, maxZ: 9.5 },
+        // Pillars
+        { minX: -18.8, maxX: -17.2, minZ: -18.8, maxZ: -17.2 },
+        { minX: 17.2, maxX: 18.8, minZ: -18.8, maxZ: -17.2 },
+        { minX: -18.8, maxX: -17.2, minZ: 17.2, maxZ: 18.8 },
+        { minX: 17.2, maxX: 18.8, minZ: 17.2, maxZ: 18.8 },
+        // Stage
+        { minX: -6, maxX: 6, minZ: -22, maxZ: -18 },
+        // Counter
+        { minX: -5, maxX: 5, minZ: 19.25, maxZ: 20.75 }
+    ],
+    arcade_zone: [
+        // Left wall cabinets
+        { minX: -23.1, maxX: -20.9, minZ: -13.1, maxZ: -10.9 },
+        { minX: -23.1, maxX: -20.9, minZ: -5.1, maxZ: -2.9 },
+        { minX: -23.1, maxX: -20.9, minZ: 2.9, maxZ: 5.1 },
+        { minX: -23.1, maxX: -20.9, minZ: 10.9, maxZ: 13.1 },
+        // Right wall cabinets
+        { minX: 20.9, maxX: 23.1, minZ: -13.1, maxZ: -10.9 },
+        { minX: 20.9, maxX: 23.1, minZ: -5.1, maxZ: -2.9 },
+        { minX: 20.9, maxX: 23.1, minZ: 2.9, maxZ: 5.1 },
+        { minX: 20.9, maxX: 23.1, minZ: 10.9, maxZ: 13.1 },
+        // Back wall cabinets
+        { minX: -9.1, maxX: -6.9, minZ: -23.1, maxZ: -20.9 },
+        { minX: -1.1, maxX: 1.1, minZ: -23.1, maxZ: -20.9 },
+        { minX: 6.9, maxX: 9.1, minZ: -23.1, maxZ: -20.9 },
+        // Center clusters
+        { minX: -9.1, maxX: -6.9, minZ: -4.1, maxZ: 4.1 },
+        { minX: 6.9, maxX: 9.1, minZ: -4.1, maxZ: 4.1 },
+        // Prize counter
+        { minX: -4, maxX: 4, minZ: 17, maxZ: 19 },
+        // Prize shelves
+        { minX: -5, maxX: 5, minZ: 21.5, maxZ: 22.5 },
+        // Token machines
+        { minX: -18.6, maxX: -17.4, minZ: 17.6, maxZ: 18.4 },
+        { minX: 17.4, maxX: 18.6, minZ: 17.6, maxZ: 18.4 },
+        // Pillars
+        { minX: -15.6, maxX: -14.4, minZ: -15.6, maxZ: -14.4 },
+        { minX: 14.4, maxX: 15.6, minZ: -15.6, maxZ: -14.4 },
+        { minX: -15.6, maxX: -14.4, minZ: 9.4, maxZ: 10.6 },
+        { minX: 14.4, maxX: 15.6, minZ: 9.4, maxZ: 10.6 }
+    ],
+    backstage: [
+        // Large crates left
+        { minX: -19.5, maxX: -16.5, minZ: -16.5, maxZ: -13.5 },
+        { minX: -19.25, maxX: -16.75, minZ: -9.25, maxZ: -6.75 },
+        { minX: -23, maxX: -21, minZ: -13, maxZ: -11 },
+        { minX: -21, maxX: -19, minZ: 3.5, maxZ: 6.5 },
+        { minX: -17.25, maxX: -14.75, minZ: 7, maxZ: 9 },
+        // Large crates right
+        { minX: 16.5, maxX: 19.5, minZ: -16.5, maxZ: -13.5 },
+        { minX: 16.75, maxX: 19.25, minZ: -9.25, maxZ: -6.75 },
+        { minX: 21, maxX: 23, minZ: -13, maxZ: -11 },
+        { minX: 19, maxX: 21, minZ: 3.5, maxZ: 6.5 },
+        { minX: 14.75, maxX: 17.25, minZ: 7, maxZ: 9 },
+        // Equipment racks
+        { minX: -7, maxX: -5, minZ: -10.6, maxZ: -9.4 },
+        { minX: 5, maxX: 7, minZ: -10.6, maxZ: -9.4 },
+        // Center crate
+        { minX: -2, maxX: 2, minZ: -19, maxZ: -17 },
+        // Workbenches
+        { minX: -10.5, maxX: -5.5, minZ: 17.25, maxZ: 18.75 },
+        { minX: 5.5, maxX: 10.5, minZ: 17.25, maxZ: 18.75 },
+        // Tool cabinets
+        { minX: -16, maxX: -14, minZ: 21.5, maxZ: 22.5 },
+        { minX: 14, maxX: 16, minZ: 21.5, maxZ: 22.5 },
+        // Forklift
+        { minX: -1, maxX: 1, minZ: 6.5, maxZ: 10.5 },
+        // Pillars
+        { minX: -12.7, maxX: -11.3, minZ: -18.7, maxZ: -17.3 },
+        { minX: 11.3, maxX: 12.7, minZ: -18.7, maxZ: -17.3 },
+        { minX: -12.7, maxX: -11.3, minZ: 14.3, maxZ: 15.7 },
+        { minX: 11.3, maxX: 12.7, minZ: 14.3, maxZ: 15.7 }
+    ],
+    kitchen: [
+        // Main prep counter
+        { minX: -6, maxX: 6, minZ: -5.75, maxZ: -4.25 },
+        // Stoves
+        { minX: -13.4, maxX: -10.6, minZ: -21, maxZ: -19 },
+        { minX: -5.4, maxX: -2.6, minZ: -21, maxZ: -19 },
+        { minX: 2.6, maxX: 5.4, minZ: -21, maxZ: -19 },
+        { minX: 10.6, maxX: 13.4, minZ: -21, maxZ: -19 },
+        // Walk-in cooler
+        { minX: -25, maxX: -19, minZ: -14, maxZ: -6 },
+        // Shelves
+        { minX: 21.1, maxX: 22.9, minZ: -15.7, maxZ: -14.3 },
+        { minX: 21.1, maxX: 22.9, minZ: -5.7, maxZ: -4.3 },
+        { minX: 21.1, maxX: 22.9, minZ: 4.3, maxZ: 5.7 },
+        // Dishwashing counter
+        { minX: 14, maxX: 22, minZ: 14, maxZ: 16 },
+        // Serving counters
+        { minX: -13, maxX: -3, minZ: 19.4, maxZ: 20.6 },
+        { minX: 3, maxX: 13, minZ: 19.4, maxZ: 20.6 },
+        // Island prep tables
+        { minX: -14.5, maxX: -9.5, minZ: 6.5, maxZ: 9.5 },
+        { minX: 9.5, maxX: 14.5, minZ: 6.5, maxZ: 9.5 },
+        // Pillars
+        { minX: -10.5, maxX: -9.5, minZ: -12.5, maxZ: -11.5 },
+        { minX: 9.5, maxX: 10.5, minZ: -12.5, maxZ: -11.5 }
+    ],
+    party_room: [
+        // Central pillar
+        { minX: -1.2, maxX: 1.2, minZ: -1.2, maxZ: 1.2 },
+        // Party tables (hexagonal pattern)
+        { minX: -15.8, maxX: -12.2, minZ: -1.8, maxZ: 1.8 },
+        { minX: 12.2, maxX: 15.8, minZ: -1.8, maxZ: 1.8 },
+        { minX: -8.8, maxX: -5.2, minZ: -13.9, maxZ: -10.1 },
+        { minX: 5.2, maxX: 8.8, minZ: -13.9, maxZ: -10.1 },
+        { minX: -8.8, maxX: -5.2, minZ: 10.1, maxZ: 13.9 },
+        { minX: 5.2, maxX: 8.8, minZ: 10.1, maxZ: 13.9 },
+        // Gift piles
+        { minX: -18.8, maxX: -17.2, minZ: -10.8, maxZ: -9.2 },
+        { minX: 17.2, maxX: 18.8, minZ: -10.8, maxZ: -9.2 },
+        { minX: -18.8, maxX: -17.2, minZ: 9.2, maxZ: 10.8 },
+        { minX: 17.2, maxX: 18.8, minZ: 9.2, maxZ: 10.8 },
+        // Stage
+        { minX: -8, maxX: 8, minZ: -26.5, maxZ: -21.5 },
+        // Cake table
+        { minX: -2.2, maxX: 2.2, minZ: 18.8, maxZ: 21.2 },
+        // Pillars
+        { minX: -20.8, maxX: -19.2, minZ: -15.8, maxZ: -14.2 },
+        { minX: 19.2, maxX: 20.8, minZ: -15.8, maxZ: -14.2 },
+        { minX: -20.8, maxX: -19.2, minZ: 14.2, maxZ: 15.8 },
+        { minX: 19.2, maxX: 20.8, minZ: 14.2, maxZ: 15.8 }
+    ]
+};
 
-    // Prize counter (southeast)
-    { minX: 16, maxX: 24, minZ: -25, maxZ: -20 },
+// Current active map for pathfinding
+let currentServerMapId = 'dining_hall';
 
-    // Skeeball lanes (south-left)
-    { minX: -12, maxX: -4, minZ: -22, maxZ: -16 },
+// Function to switch server map obstacles
+function setServerMap(mapId) {
+    if (MAP_OBSTACLES[mapId]) {
+        currentServerMapId = mapId;
+        NavGrid.buildFromObstacles(MAP_OBSTACLES[mapId]);
+        Pathfinder.clearCache();
+        log(`Server NavGrid rebuilt for map: ${mapId}`, 'INFO');
+    }
+}
 
-    // Kitchen counter (east)
-    { minX: 14, maxX: 22, minZ: 12, maxZ: 22 },
-
-    // Party rooms (east)
-    { minX: 20, maxX: 26, minZ: -8, maxZ: 2 },
-
-    // Ball pit (west)
-    { minX: -24, maxX: -16, minZ: 12, maxZ: 20 },
-
-    // Play structure (southwest)
-    { minX: -24, maxX: -16, minZ: -20, maxZ: -10 },
-
-    // Restrooms (west)
-    { minX: -26, maxX: -18, minZ: -6, maxZ: 2 },
-
-    // Arcade machines - left wall
-    { minX: -26, maxX: -24, minZ: -18, maxZ: -14 },
-    { minX: -26, maxX: -24, minZ: -12, maxZ: -8 },
-    { minX: -26, maxX: -24, minZ: -6, maxZ: -2 },
-    { minX: -26, maxX: -24, minZ: 4, maxZ: 8 },
-
-    // Arcade machines - right wall
-    { minX: 24, maxX: 26, minZ: -18, maxZ: -14 },
-    { minX: 24, maxX: 26, minZ: -12, maxZ: -8 },
-    { minX: 24, maxX: 26, minZ: 4, maxZ: 8 },
-
-    // Dining tables (center area) - 2 rows, 3 tables each
-    { minX: -10, maxX: -6, minZ: 4, maxZ: 8 },
-    { minX: -2, maxX: 2, minZ: 4, maxZ: 8 },
-    { minX: 6, maxX: 10, minZ: 4, maxZ: 8 },
-    { minX: -10, maxX: -6, minZ: 12, maxZ: 16 },
-    { minX: -2, maxX: 2, minZ: 12, maxZ: 16 },
-    { minX: 6, maxX: 10, minZ: 12, maxZ: 16 },
-
-    // Pillars
-    { minX: -16, maxX: -14, minZ: -16, maxZ: -14 },
-    { minX: 14, maxX: 16, minZ: -16, maxZ: -14 },
-    { minX: -16, maxX: -14, minZ: 14, maxZ: 16 },
-    { minX: 14, maxX: 16, minZ: 14, maxZ: 16 },
-
-    // Waiting area benches (north)
-    { minX: -8, maxX: 8, minZ: 22, maxZ: 24 }
-];
-
-// Initialize NavGrid and build from obstacles
+// Initialize NavGrid with first map
 NavGrid.init();
-NavGrid.buildFromObstacles(MAP_OBSTACLES);
+NavGrid.buildFromObstacles(MAP_OBSTACLES.dining_hall);
 
 // ==================== MULTI-LOBBY SYSTEM ====================
 const gameRooms = new Map(); // roomId -> GameRoom
@@ -893,6 +985,57 @@ function updateZombies() {
             zombie.lastTargetPos = null;
         }
 
+        // Initialize stuck detection data
+        if (!zombie.stuckData) {
+            zombie.stuckData = {
+                lastPos: { x: zombie.position.x, z: zombie.position.z },
+                lastMoveTime: now,
+                stuckCount: 0
+            };
+        }
+
+        // Check if zombie is stuck (hasn't moved significantly in 3 seconds)
+        const stuckDx = zombie.position.x - zombie.stuckData.lastPos.x;
+        const stuckDz = zombie.position.z - zombie.stuckData.lastPos.z;
+        const stuckMoveDist = Math.sqrt(stuckDx * stuckDx + stuckDz * stuckDz);
+
+        if (stuckMoveDist > 0.5) {
+            // Zombie moved, update last position
+            zombie.stuckData.lastPos = { x: zombie.position.x, z: zombie.position.z };
+            zombie.stuckData.lastMoveTime = now;
+            zombie.stuckData.stuckCount = 0;
+        } else if (now - zombie.stuckData.lastMoveTime > 3000) {
+            // Zombie stuck for 3 seconds - respawn at spawn point
+            zombie.stuckData.stuckCount++;
+
+            if (zombie.stuckData.stuckCount >= 2) {
+                // Really stuck - respawn at random spawn location
+                const arenaSize = 25;
+                const side = Math.floor(Math.random() * 4);
+                let newPos = { x: 0, z: 0 };
+
+                switch (side) {
+                    case 0: newPos = { x: (Math.random() - 0.5) * arenaSize, z: -arenaSize }; break;
+                    case 1: newPos = { x: (Math.random() - 0.5) * arenaSize, z: arenaSize }; break;
+                    case 2: newPos = { x: -arenaSize, z: (Math.random() - 0.5) * arenaSize }; break;
+                    case 3: newPos = { x: arenaSize, z: (Math.random() - 0.5) * arenaSize }; break;
+                }
+
+                zombie.position.x = newPos.x;
+                zombie.position.z = newPos.z;
+                zombie.path = null;
+                zombie.stuckData.lastPos = { x: newPos.x, z: newPos.z };
+                zombie.stuckData.lastMoveTime = now;
+                zombie.stuckData.stuckCount = 0;
+
+                log(`Zombie ${id} was stuck - respawned at (${newPos.x.toFixed(1)}, ${newPos.z.toFixed(1)})`, 'WARN');
+            } else {
+                // First stuck detection - clear path and try again
+                zombie.path = null;
+                zombie.stuckData.lastMoveTime = now;
+            }
+        }
+
         // Check if we need to recalculate path
         const pathAge = now - zombie.lastPathUpdate;
         const targetMoved = zombie.lastTargetPos &&
@@ -1140,6 +1283,7 @@ function startWave() {
     const mapChanged = targetMapId !== GameState.currentMapId;
     if (mapChanged) {
         GameState.currentMapId = targetMapId;
+        setServerMap(targetMapId);  // Rebuild pathfinding for new map
         log(`Map changed to ${targetMapId} for wave ${GameState.wave}`, 'GAME');
     }
 
@@ -1943,6 +2087,73 @@ function handleMessage(playerId, message) {
     }
 }
 
+// ==================== BINARY PROTOCOL ====================
+// Message types for binary encoding
+const BinaryMsgType = {
+    SYNC: 1,
+    ZOMBIE_SPAWN: 2,
+    ZOMBIE_KILL: 3,
+    PLAYER_POS: 4
+};
+
+// Binary encoder for high-frequency messages (~60% bandwidth reduction)
+const BinaryProtocol = {
+    // Encode sync message to binary
+    encodeSync(zombies, gameState) {
+        // Calculate buffer size: header(5) + gameState(16) + zombies(20 each)
+        const zombieArray = Array.from(zombies.values());
+        const bufferSize = 5 + 16 + (zombieArray.length * 20);
+        const buffer = Buffer.alloc(bufferSize);
+        let offset = 0;
+
+        // Header: type(1) + zombie count(2) + reserved(2)
+        buffer.writeUInt8(BinaryMsgType.SYNC, offset); offset += 1;
+        buffer.writeUInt16LE(zombieArray.length, offset); offset += 2;
+        buffer.writeUInt16LE(0, offset); offset += 2; // reserved
+
+        // Game state: wave(2) + remaining(2) + kills(4) + score(4) + reserved(4)
+        buffer.writeUInt16LE(gameState.wave || 0, offset); offset += 2;
+        buffer.writeUInt16LE(gameState.zombiesRemaining || 0, offset); offset += 2;
+        buffer.writeUInt32LE(gameState.totalKills || 0, offset); offset += 4;
+        buffer.writeUInt32LE(gameState.totalScore || 0, offset); offset += 4;
+        buffer.writeUInt32LE(0, offset); offset += 4; // reserved
+
+        // Zombies: each 20 bytes
+        zombieArray.forEach((zombie, idx) => {
+            // ID as index (2 bytes) - client maps by received order
+            buffer.writeUInt16LE(idx, offset); offset += 2;
+            // Type encoded (1 byte): 0=normal, 1=runner, 2=tank, 3=boss
+            const typeCode = { normal: 0, runner: 1, tank: 2, boss: 3 }[zombie.type] || 0;
+            buffer.writeUInt8(typeCode, offset); offset += 1;
+            // Alive flag (1 byte)
+            buffer.writeUInt8(zombie.isAlive ? 1 : 0, offset); offset += 1;
+            // Position x, z as floats (8 bytes)
+            buffer.writeFloatLE(zombie.position?.x || 0, offset); offset += 4;
+            buffer.writeFloatLE(zombie.position?.z || 0, offset); offset += 4;
+            // Rotation (4 bytes)
+            buffer.writeFloatLE(zombie.rotation || 0, offset); offset += 4;
+            // Health (2 bytes)
+            buffer.writeUInt16LE(Math.max(0, Math.min(65535, zombie.health || 0)), offset); offset += 2;
+        });
+
+        return buffer;
+    }
+};
+
+// Binary broadcast for sync messages
+function broadcastBinaryToRoom(room, buffer) {
+    if (!room) return;
+    room.players.forEach((player, id) => {
+        if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+            try {
+                player.ws.send(buffer);
+            } catch (e) {
+                log(`Binary WebSocket send error to ${id}: ${e.message}`, 'ERROR');
+            }
+        }
+    });
+}
+
 // ==================== GAME LOOP ====================
 setInterval(() => {
     // Process all active game rooms
@@ -1951,17 +2162,14 @@ setInterval(() => {
             // For legacy compatibility, set the current room for global functions
             updateZombies();
 
-            // Send periodic state sync to room
-            broadcastToRoom(room, {
-                type: 'sync',
-                zombies: getZombiesData(),
-                gameState: {
-                    wave: room.wave,
-                    zombiesRemaining: room.zombiesRemaining,
-                    totalKills: room.totalKills,
-                    totalScore: room.totalScore
-                }
+            // Send binary sync for better performance
+            const binaryData = BinaryProtocol.encodeSync(GameState.zombies, {
+                wave: room.wave,
+                zombiesRemaining: room.zombiesRemaining,
+                totalKills: room.totalKills,
+                totalScore: room.totalScore
             });
+            broadcastBinaryToRoom(room, binaryData);
         }
     });
 }, 1000 / CONFIG.tickRate);
