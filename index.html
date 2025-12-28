@@ -87,7 +87,72 @@
             font-size: 14px;
         }
 
-        @-webkit-keyframes rotatePhone {
+        
+        /* WebGL Error Overlay */
+        #webgl-error-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a0a0a 0%, #2a0a1a 100%);
+            z-index: 10001;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #webgl-error-overlay .error-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        #webgl-error-overlay .error-title {
+            color: #ff4444;
+            font-size: 28px;
+            text-shadow: 0 0 10px #ff0000;
+            margin-bottom: 15px;
+        }
+
+        #webgl-error-overlay .error-message {
+            color: #ccc;
+            font-size: 16px;
+            max-width: 500px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        #webgl-error-overlay .error-tips {
+            color: #888;
+            font-size: 14px;
+            text-align: left;
+            max-width: 400px;
+        }
+
+        #webgl-error-overlay .error-tips li {
+            margin-bottom: 8px;
+        }
+
+        #webgl-error-overlay .retry-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: linear-gradient(180deg, #cc0000 0%, #880000 100%);
+            border: 2px solid #ff0000;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-family: inherit;
+        }
+
+        #webgl-error-overlay .retry-btn:hover {
+            background: linear-gradient(180deg, #ff0000 0%, #aa0000 100%);
+        }
+
+@-webkit-keyframes rotatePhone {
             0%, 100% { -webkit-transform: rotate(0deg); }
             25% { -webkit-transform: rotate(-15deg); }
             75% { -webkit-transform: rotate(15deg); }
@@ -1818,6 +1883,22 @@
         <div class="rotate-icon">&#x1F4F1;</div>
         <div class="rotate-message">ROTATE YOUR DEVICE</div>
         <div class="rotate-submessage">This game is best played in landscape mode</div>
+    </div>
+
+    <!-- WebGL Error Overlay -->
+    <div id="webgl-error-overlay" role="alert">
+        <div class="error-icon">⚠️</div>
+        <div class="error-title">WebGL Not Available</div>
+        <div class="error-message">
+            This game requires WebGL to run, but your browser or device doesn't support it or has it disabled.
+        </div>
+        <ul class="error-tips">
+            <li>Try using a modern browser (Chrome, Firefox, Safari, Edge)</li>
+            <li>Update your graphics drivers</li>
+            <li>Check if hardware acceleration is enabled in browser settings</li>
+            <li>Some privacy extensions may block WebGL</li>
+        </ul>
+        <button class="retry-btn" onclick="location.reload()">Retry</button>
     </div>
 
     <div id="loading-screen">

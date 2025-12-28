@@ -190,6 +190,30 @@ function detectOptimalQuality() {
     return quality;
 }
 
+// ==================== WEBGL DETECTION ====================
+function isWebGLAvailable() {
+    try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        return !!(gl && gl instanceof WebGLRenderingContext);
+    } catch (e) {
+        return false;
+    }
+}
+
+function showWebGLError() {
+    const overlay = document.getElementById('webgl-error-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+    }
+    // Hide loading screen
+    const loading = document.getElementById('loading-screen');
+    if (loading) {
+        loading.style.display = 'none';
+    }
+    DebugLog.log('WebGL not available - showing error overlay', 'error');
+}
+
 // ==================== USER SETTINGS ==
 const DEFAULT_SETTINGS = {
     mouseSensitivity: 1.0,    // Multiplier (0.25 - 2.0)
@@ -2431,6 +2455,12 @@ async function initLeaderboard() {
 function initThreeJS() {
     DebugLog.log('Initializing Three.js renderer...', 'info');
 
+    // Check WebGL availability first
+    if (!isWebGLAvailable()) {
+        showWebGLError();
+        throw new Error('WebGL not available');
+    }
+
     // Initialize static Vector3 constants
     Vec3.init();
 
@@ -2441,7 +2471,15 @@ function initThreeJS() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, CONFIG.player.height, 0);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    // Try to create WebGL renderer with error handling
+    try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    } catch (e) {
+        DebugLog.log('WebGLRenderer creation failed: ' + e.message, 'error');
+        showWebGLError();
+        throw new Error('WebGL renderer creation failed');
+    }
+
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
