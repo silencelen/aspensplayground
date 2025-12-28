@@ -13500,6 +13500,64 @@ function initEventListeners() {
         quitToMenu();
     });
 
+    // Share buttons on game over screen
+    function getShareText() {
+        const score = GameState.totalScore || 0;
+        const wave = GameState.wave || 1;
+        const kills = GameState.totalKills || 0;
+        return `I survived ${wave} waves and scored ${score.toLocaleString()} points with ${kills} zombie kills in Aspen's Playground! Can you beat my score? 🧟`;
+    }
+
+    function getShareUrl() {
+        return 'https://aspensplayground.com';
+    }
+
+    const shareTwitterBtn = document.getElementById('share-twitter');
+    if (shareTwitterBtn) {
+        shareTwitterBtn.addEventListener('click', () => {
+            const text = encodeURIComponent(getShareText());
+            const url = encodeURIComponent(getShareUrl());
+            window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank', 'width=550,height=420');
+        });
+    }
+
+    const shareRedditBtn = document.getElementById('share-reddit');
+    if (shareRedditBtn) {
+        shareRedditBtn.addEventListener('click', () => {
+            const title = encodeURIComponent(`I scored ${GameState.totalScore.toLocaleString()} points in Aspen's Playground!`);
+            const url = encodeURIComponent(getShareUrl());
+            window.open(`https://reddit.com/submit?title=${title}&url=${url}`, '_blank', 'width=550,height=600');
+        });
+    }
+
+    const shareCopyBtn = document.getElementById('share-copy');
+    if (shareCopyBtn) {
+        shareCopyBtn.addEventListener('click', async () => {
+            const text = `${getShareText()}\n\nPlay now: ${getShareUrl()}`;
+            try {
+                await navigator.clipboard.writeText(text);
+                const originalText = shareCopyBtn.innerHTML;
+                shareCopyBtn.innerHTML = '<span>&#x2714;</span> Copied!';
+                setTimeout(() => {
+                    shareCopyBtn.innerHTML = originalText;
+                }, 2000);
+            } catch (err) {
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                const originalText = shareCopyBtn.innerHTML;
+                shareCopyBtn.innerHTML = '<span>&#x2714;</span> Copied!';
+                setTimeout(() => {
+                    shareCopyBtn.innerHTML = originalText;
+                }, 2000);
+            }
+        });
+    }
+
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();

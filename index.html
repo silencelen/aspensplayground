@@ -773,6 +773,52 @@
             outline-offset: 3px;
         }
 
+        /* Share buttons */
+        .share-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .share-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            color: white;
+        }
+
+        .share-btn:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+
+        .share-btn.twitter {
+            background: #1da1f2;
+        }
+
+        .share-btn.reddit {
+            background: #ff4500;
+        }
+
+        .share-btn.copy {
+            background: #666;
+        }
+
+        .share-btn:focus {
+            outline: 3px solid #ffff00;
+            outline-offset: 2px;
+        }
+
         .mode-buttons {
             display: flex;
             gap: 20px;
@@ -2761,6 +2807,20 @@
             <div class="leaderboard-title">TOP 10 SURVIVORS</div>
             <div id="gameover-leaderboard-content"></div>
         </div>
+
+        <!-- Share Score Buttons -->
+        <div class="share-buttons" id="share-buttons">
+            <button class="share-btn twitter" id="share-twitter" aria-label="Share score on Twitter">
+                <span>&#x1D54F;</span> Tweet Score
+            </button>
+            <button class="share-btn reddit" id="share-reddit" aria-label="Share score on Reddit">
+                <span>&#x1F47D;</span> Share on Reddit
+            </button>
+            <button class="share-btn copy" id="share-copy" aria-label="Copy score to clipboard">
+                <span>&#x1F4CB;</span> Copy
+            </button>
+        </div>
+
         <button class="menu-button" id="restart-button" aria-label="Play again with same settings">PLAY AGAIN</button>
         <button class="menu-button secondary" id="menu-button" style="background: linear-gradient(180deg, #444, #222); border-color: #666;" aria-label="Return to main menu">MAIN MENU</button>
     </div>
