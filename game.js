@@ -2459,7 +2459,7 @@ function startCreepyDrone() {
         droneOscillator.osc2 = osc2;
         droneOscillator.osc3 = osc3;
         droneOscillator.lfo = lfo;
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 function stopCreepyDrone() {
@@ -2469,7 +2469,7 @@ function stopCreepyDrone() {
             droneOscillator.osc2?.stop();
             droneOscillator.osc3?.stop();
             droneOscillator.lfo?.stop();
-        } catch (e) {}
+        } catch (e) { /* Audio error - silently ignore for user experience */ }
         droneOscillator = null;
         droneGain = null;
     }
@@ -2521,7 +2521,7 @@ function playHeartbeat(health) {
             osc2.start(audioContext.currentTime);
             osc2.stop(audioContext.currentTime + 0.15);
         }, 150);
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 // Random creepy atmospheric sounds
@@ -2557,7 +2557,7 @@ function playCreepySound(type) {
                 playPhantomFootsteps(volume);
                 break;
         }
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 function playWhisperSound(volume) {
@@ -2791,7 +2791,7 @@ function playAmbientZombieSound() {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 1.2);
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 function updateFootsteps(delta, isMoving, isSprinting) {
@@ -2838,7 +2838,7 @@ function playFootstepSound() {
         gainNode.connect(audioContext.destination);
 
         source.start(audioContext.currentTime);
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 function playZombieDeathSound(position) {
@@ -2876,7 +2876,7 @@ function playZombieDeathSound(position) {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.4);
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 function getEffectiveVolume() {
@@ -10090,7 +10090,7 @@ function playSound(type, position = null) {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.5);
-    } catch (e) {}
+    } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
 // Play sound at a 3D position (for zombie attacks, pickups, etc.)
