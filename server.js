@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 
 // ==================== RATE LIMITING CONFIG ====================
 const RATE_LIMIT = {
@@ -141,6 +142,25 @@ const mainServer = net.createServer((socket) => {
 
 const LEADERBOARD_FILE = path.join(__dirname, 'leaderboard.json');
 const MAX_LEADERBOARD_SIZE = 10;
+
+// ==================== SECURITY HEADERS ====================
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],  // Allow Three.js CDN
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            imgSrc: ["'self'", "data:", "blob:"],
+            connectSrc: ["'self'", "ws:", "wss:"],  // Allow WebSocket connections
+            workerSrc: ["'self'", "blob:"],
+            objectSrc: ["'none'"],
+            upgradeInsecureRequests: []
+        }
+    },
+    crossOriginEmbedderPolicy: false,  // Required for some game assets
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // Serve static files and parse JSON
 app.use(express.static(path.join(__dirname)));
