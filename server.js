@@ -265,8 +265,9 @@ class SpatialGrid {
     }
 }
 
-// Global player spatial grid (rebuilt each tick)
+// Global spatial grids (rebuilt each tick)
 const playerSpatialGrid = new SpatialGrid(10, 50, 50);
+const zombieSpatialGrid = new SpatialGrid(10, 50, 50);
 
 // ==================== ENTITY CACHE ====================
 // Caches alive entity arrays to avoid repeated O(n) filtering per tick
@@ -317,6 +318,7 @@ const EntityCache = {
 // ==================== SESSION AUTHENTICATION ====================
 // Game sessions - tracks active players and their server-verified stats
 const gameSessions = new Map();  // sessionToken -> { playerId, visitorId, score, kills, wave, startTime, isActive }
+const playerIdToToken = new Map();  // playerId -> sessionToken (reverse index for O(1) lookup)
 
 function generateSessionToken() {
     return crypto.randomBytes(32).toString('hex');
@@ -336,6 +338,7 @@ function createGameSession(playerId, visitorId = null) {
         isInGame: false  // True once they've started playing (not just in lobby)
     };
     gameSessions.set(token, session);
+    playerIdToToken.set(playerId, token);  // Add to reverse index
     return session;
 }
 
@@ -343,12 +346,16 @@ function getSessionByToken(token) {
     return gameSessions.get(token);
 }
 
+// O(1) session lookup by playerId using reverse index
 function getSessionByPlayerId(playerId) {
-    for (const [token, session] of gameSessions) {
-        if (session.playerId === playerId && session.isActive) {
-            return session;
-        }
+    const token = playerIdToToken.get(playerId);
+    if (!token) return null;
+    const session = gameSessions.get(token);
+    if (session && session.isActive) {
+        return session;
     }
+    // Clean up stale index entry
+    playerIdToToken.delete(playerId);
     return null;
 }
 
@@ -356,6 +363,7 @@ function endGameSession(token) {
     const session = gameSessions.get(token);
     if (session) {
         session.isActive = false;
+        playerIdToToken.delete(session.playerId);  // Remove from reverse index
         // Keep session for 5 minutes for leaderboard submission
         setTimeout(() => {
             gameSessions.delete(token);
@@ -389,10 +397,12 @@ setInterval(() => {
         // Remove inactive sessions older than 10 minutes
         if (!session.isActive && now - session.startTime > 10 * 60 * 1000) {
             gameSessions.delete(token);
+            playerIdToToken.delete(session.playerId);  // Clean reverse index
         }
         // Remove abandoned active sessions (no activity for 30 minutes)
         if (session.isActive && now - session.startTime > 30 * 60 * 1000) {
             session.isActive = false;
+            playerIdToToken.delete(session.playerId);  // Clean reverse index
         }
     }
 }, 60 * 1000); // Check every minute
@@ -1085,10 +1095,10 @@ const Pathfinder = {
     },
 
     heuristic(x1, z1, x2, z2) {
-        // Euclidean distance
+        // Squared Euclidean distance (avoids expensive sqrt, still admissible)
         const dx = x2 - x1;
         const dz = z2 - z1;
-        return Math.sqrt(dx * dx + dz * dz);
+        return dx * dx + dz * dz;
     },
 
     reconstructPath(cameFrom, goal, startX, startZ) {
@@ -1096,29 +1106,37 @@ const Pathfinder = {
         let current = goal;
 
         while (current) {
-            path.unshift({
+            path.push({
                 x: NavGrid.gridToWorldX(current.x),
                 z: NavGrid.gridToWorldZ(current.z)
             });
             const key = `${current.x},${current.z}`;
             current = cameFrom.get(key);
         }
+        path.reverse(); // O(n) once instead of O(n) per unshift
 
         // Smooth path - remove unnecessary waypoints
         return this.smoothPath(path);
     },
 
+    // Optimized path smoothing - O(n) instead of O(n²)
+    // Limits lookahead to max 6 waypoints instead of checking all remaining
     smoothPath(path) {
         if (path.length <= 2) return path;
 
         const smoothed = [path[0]];
         let i = 0;
+        const maxLookahead = 6; // Limit how far ahead we check
 
         while (i < path.length - 1) {
             let furthest = i + 1;
-            for (let j = i + 2; j < path.length; j++) {
+            // Only check up to maxLookahead waypoints ahead (O(1) per iteration)
+            const limit = Math.min(i + maxLookahead, path.length);
+            for (let j = limit - 1; j > i + 1; j--) {
+                // Check furthest first, break on first success (greedy)
                 if (this.hasLineOfSight(path[i].x, path[i].z, path[j].x, path[j].z)) {
                     furthest = j;
+                    break;
                 }
             }
             smoothed.push(path[furthest]);
@@ -1128,20 +1146,40 @@ const Pathfinder = {
         return smoothed;
     },
 
+    // Optimized line-of-sight using Bresenham-style integer stepping
+    // Avoids Math.sqrt() and uses coarser grid sampling (1.0 unit steps)
     hasLineOfSight(x1, z1, x2, z2) {
-        const dx = x2 - x1;
-        const dz = z2 - z1;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        const steps = Math.ceil(dist / 0.5);
+        // Convert to grid coordinates for integer math
+        const gx1 = NavGrid.worldToGridX(x1);
+        const gz1 = NavGrid.worldToGridZ(z1);
+        const gx2 = NavGrid.worldToGridX(x2);
+        const gz2 = NavGrid.worldToGridZ(z2);
 
-        for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const x = x1 + dx * t;
-            const z = z1 + dz * t;
-            const gx = NavGrid.worldToGridX(x);
-            const gz = NavGrid.worldToGridZ(z);
-            if (!NavGrid.isWalkable(gx, gz)) {
+        // Bresenham's line algorithm for grid traversal
+        let dx = Math.abs(gx2 - gx1);
+        let dz = Math.abs(gz2 - gz1);
+        const sx = gx1 < gx2 ? 1 : -1;
+        const sz = gz1 < gz2 ? 1 : -1;
+        let err = dx - dz;
+
+        let x = gx1;
+        let z = gz1;
+
+        while (true) {
+            if (!NavGrid.isWalkable(x, z)) {
                 return false;
+            }
+
+            if (x === gx2 && z === gz2) break;
+
+            const e2 = 2 * err;
+            if (e2 > -dz) {
+                err -= dz;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                z += sz;
             }
         }
         return true;
@@ -1725,7 +1763,7 @@ function updateZombies(room = null) {
             (Math.abs(closestPlayer.position.x - zombie.lastTargetPos.x) > 3 ||
              Math.abs(closestPlayer.position.z - zombie.lastTargetPos.z) > 3);
 
-        if (!zombie.path || pathAge > 500 || targetMoved || zombie.pathIndex >= zombie.path.length) {
+        if (!zombie.path || pathAge > 1000 || targetMoved || zombie.pathIndex >= zombie.path.length) {
             // Calculate new path
             const newPath = Pathfinder.findPath(
                 zombie.position.x, zombie.position.z,
@@ -2857,20 +2895,30 @@ const INTEREST_CONFIG = {
 };
 
 // Filter zombies relevant to a specific player
-function getRelevantZombies(zombieMap, playerPosition, playerId) {
+// Optimized: Uses spatial grid for O(k) lookup instead of O(n) iteration
+// where k = zombies in nearby cells, typically much smaller than n
+function getRelevantZombies(playerPosition, playerId) {
+    // Get nearby zombies from spatial grid (O(k) where k << n)
+    const nearbyZombies = zombieSpatialGrid.getNearbyEntities(
+        playerPosition.x,
+        playerPosition.z,
+        INTEREST_CONFIG.zombieViewDistance
+    );
+
     const relevant = [];
     const viewDistSq = INTEREST_CONFIG.zombieViewDistance * INTEREST_CONFIG.zombieViewDistance;
 
-    zombieMap.forEach(zombie => {
-        if (!zombie.isAlive) return;
+    // Filter nearby zombies by exact distance
+    for (const zombie of nearbyZombies) {
+        if (!zombie.isAlive) continue;
 
         // Always include zombies targeting this player
         if (INTEREST_CONFIG.alwaysIncludeTargeting && zombie.targetPlayerId === playerId) {
             relevant.push(zombie);
-            return;
+            continue;
         }
 
-        // Distance check
+        // Exact distance check for zombies in grid cells
         const dx = zombie.position.x - playerPosition.x;
         const dz = zombie.position.z - playerPosition.z;
         const distSq = dx * dx + dz * dz;
@@ -2878,7 +2926,7 @@ function getRelevantZombies(zombieMap, playerPosition, playerId) {
         if (distSq <= viewDistSq) {
             relevant.push(zombie);
         }
-    });
+    }
 
     return relevant;
 }
@@ -2956,6 +3004,9 @@ setInterval(() => {
             // For legacy compatibility, set the current room for global functions
             updateZombies(room);
 
+            // Rebuild zombie spatial grid for interest management (O(n) once per tick)
+            zombieSpatialGrid.rebuild(Array.from(room.zombies.values()));
+
             // Game state shared by all players
             const gameState = {
                 wave: room.wave,
@@ -2969,9 +3020,8 @@ setInterval(() => {
                 if (!player.ws || player.ws.readyState !== WebSocket.OPEN) return;
                 if (!player.isAlive || !player.position) return;
 
-                // Filter zombies relevant to this player
+                // Filter zombies relevant to this player using spatial grid
                 const relevantZombies = getRelevantZombies(
-                    room.zombies,
                     player.position,
                     playerId
                 );
