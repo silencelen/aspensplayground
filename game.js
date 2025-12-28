@@ -2144,6 +2144,34 @@ function init() {
     }
 }
 
+// ==================== SERVICE WORKER REGISTRATION ====================
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then((registration) => {
+                    DebugLog.log('ServiceWorker registered successfully', 'success');
+
+                    // Check for updates
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                DebugLog.log('New version available! Refresh to update.', 'info');
+                            }
+                        });
+                    });
+                })
+                .catch((error) => {
+                    DebugLog.log('ServiceWorker registration failed: ' + error, 'error');
+                });
+        });
+    }
+}
+
+// Register service worker immediately
+registerServiceWorker();
+
 // ==================== ONLINE/OFFLINE DETECTION ====================
 let isOnline = navigator.onLine;
 
