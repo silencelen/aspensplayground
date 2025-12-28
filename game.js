@@ -9266,7 +9266,9 @@ function updateHUD() {
         document.getElementById('ammo-display').textContent = `${weapon.ammo} / ${weapon.reserveAmmo}`;
     }
 
-    document.getElementById('wave-display').innerHTML = `WAVE ${GameState.wave} <span id="enemy-count" style="color: #ff4444; font-size: 18px; margin-left: 10px;">- ${countAliveZombies()} LEFT</span>`;
+    // Total enemies left = alive zombies + zombies yet to spawn
+    const totalEnemiesLeft = countAliveZombies() + (GameState.zombiesToSpawn || 0);
+    document.getElementById('wave-display').innerHTML = `WAVE ${GameState.wave} <span id="enemy-count" style="color: #ff4444; font-size: 18px; margin-left: 10px;">- ${totalEnemiesLeft} LEFT</span>`;
     document.getElementById('score-display').textContent = playerState.score;
     document.getElementById('kills-display').textContent = playerState.kills;
 
