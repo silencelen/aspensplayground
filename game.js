@@ -3850,10 +3850,7 @@ function decodeBinarySync(view) {
                 zombie.isAlive = isAlive;
                 zombie.type = ZombieTypes[typeCode] || 'normal';
 
-                // Directly update mesh position from server data
-                // (lerp factor chase effect made zombies lag behind)
-
-                // Update mesh position and visibility directly
+                // Update mesh position
                 if (zombie.mesh) {
                     zombie.mesh.position.x = x;
                     zombie.mesh.position.z = z;
@@ -5793,8 +5790,7 @@ const ZombieSkeleton = {
         }
 
         // Apply rotation to face direction
-        // In multiplayer, binary sync sets rotation directly
-        if (zombie.rotation !== undefined && GameState.mode === 'singleplayer') {
+        if (zombie.rotation !== undefined) {
             zombie.mesh.rotation.y = zombie.rotation;
         }
 
@@ -11145,10 +11141,10 @@ function updateZombieAnimations(delta) {
     zombies.forEach(zombie => {
         if (!zombie.mesh) return;
 
-        // Sync mesh position from zombie data
-        // In multiplayer, binary sync already sets mesh position directly
-        // In singleplayer, collision system updates zombie.position and we sync here
-        if (GameState.mode === 'singleplayer' && zombie.isAlive) {
+        // Apply smooth interpolation instead of snapping position
+        if (GameState.mode === 'multiplayer') {
+            Interpolation.applyInterpolation(zombie, zombie.mesh);
+        } else if (zombie.isAlive) {
             // Singleplayer: direct position update (collision system handles mesh sync now)
             zombie.mesh.position.x = zombie.position.x;
             zombie.mesh.position.z = zombie.position.z;
