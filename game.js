@@ -4581,6 +4581,9 @@ function handleWaveComplete(message) {
 function handleGameStart(message) {
     DebugLog.log('Game starting!', 'game');
 
+    // Re-initialize controls (may have been cleaned up on previous quit)
+    initControls();
+
     // Clean up any cosmetic preview renderers that might be stealing WebGL context
     cleanupCosmeticPreviews();
 
@@ -11371,6 +11374,9 @@ function updateEffects(delta) {
 // ==================== SINGLE PLAYER MODE ====================
 function startSinglePlayerGame() {
     DebugLog.log('Starting Single Player mode...', 'game');
+
+    // Re-initialize controls (may have been cleaned up on previous quit)
+    initControls();
 
     // Hide menu, show game UI
     setElementDisplay('start-screen', 'none');
