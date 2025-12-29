@@ -244,8 +244,15 @@ function loadSettings() {
             DebugLog.log('First run: auto-detected graphics quality', 'info');
         }
     } catch (e) {
-        DebugLog.log('Failed to load settings, using defaults', 'warn');
+        DebugLog.log('Failed to load settings (corrupted data), using defaults', 'warn');
         userSettings = { ...DEFAULT_SETTINGS };
+        // Clear corrupted data and save fresh defaults
+        try {
+            localStorage.removeItem('gameSettings');
+            saveSettings();
+        } catch (clearErr) {
+            // localStorage might be full or unavailable
+        }
     }
     applySettings();
 }
@@ -1494,7 +1501,13 @@ const Achievements = {
                 });
             }
         } catch (e) {
-            console.log('Failed to load achievements');
+            console.log('Failed to load achievements (corrupted data)');
+            // Clear corrupted data
+            try {
+                localStorage.removeItem('aspensPlaygroundAchievements');
+            } catch (clearErr) {
+                // localStorage might be unavailable
+            }
         }
     },
 
@@ -1926,20 +1939,45 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Sanitize player name to prevent XSS and ensure valid input
+function sanitizePlayerName(name) {
+    if (typeof name !== 'string') return '';
+
+    // Remove control characters and zero-width characters
+    let sanitized = name.replace(/[\x00-\x1F\x7F\u200B-\u200D\uFEFF]/g, '');
+
+    // Remove HTML/script tags and entities
+    sanitized = sanitized.replace(/[<>&"'`]/g, '');
+
+    // Collapse multiple spaces into one
+    sanitized = sanitized.replace(/\s+/g, ' ').trim();
+
+    // Limit length
+    sanitized = sanitized.substring(0, 20);
+
+    // Must have at least one alphanumeric character
+    if (!/[a-zA-Z0-9]/.test(sanitized)) {
+        return '';
+    }
+
+    return sanitized;
+}
+
 function getPlayerName() {
     // First check the input field on the main menu
     const nameInput = document.getElementById('player-name-input');
-    let name = nameInput ? nameInput.value.trim() : '';
+    let name = nameInput ? sanitizePlayerName(nameInput.value) : '';
 
     // If no name in input, check localStorage
     if (!name) {
-        name = localStorage.getItem('playerName') || '';
+        const savedName = localStorage.getItem('playerName');
+        name = savedName ? sanitizePlayerName(savedName) : '';
     }
 
     // If still no name, prompt the user
     if (!name) {
-        name = prompt('Enter your name for the leaderboard:', 'Survivor') || 'Anonymous';
-        name = name.substring(0, 20).trim();
+        const prompted = prompt('Enter your name for the leaderboard:', 'Survivor') || 'Anonymous';
+        name = sanitizePlayerName(prompted) || 'Anonymous';
     }
 
     // Save to localStorage for future use
@@ -1957,15 +1995,20 @@ function initPlayerNameInput() {
     const nameInput = document.getElementById('player-name-input');
     if (!nameInput) return;
 
-    // Load saved name from localStorage
+    // Load saved name from localStorage (sanitize on load)
     const savedName = localStorage.getItem('playerName');
     if (savedName) {
-        nameInput.value = savedName;
+        const sanitized = sanitizePlayerName(savedName);
+        nameInput.value = sanitized;
+        // Update localStorage if sanitization changed the value
+        if (sanitized !== savedName && sanitized) {
+            localStorage.setItem('playerName', sanitized);
+        }
     }
 
     // Save name when input changes
     nameInput.addEventListener('input', () => {
-        const name = nameInput.value.trim().substring(0, 20);
+        const name = sanitizePlayerName(nameInput.value);
         if (name) {
             localStorage.setItem('playerName', name);
         }
@@ -1973,8 +2016,9 @@ function initPlayerNameInput() {
 
     // Also save on blur (when user clicks away) and send to server if connected
     nameInput.addEventListener('blur', () => {
-        const name = nameInput.value.trim().substring(0, 20);
+        const name = sanitizePlayerName(nameInput.value);
         if (name) {
+            nameInput.value = name; // Update field with sanitized value
             localStorage.setItem('playerName', name);
             // Send name update to server if in multiplayer mode
             if (GameState.mode === 'multiplayer' && GameState.isConnected) {
@@ -1986,8 +2030,9 @@ function initPlayerNameInput() {
     // Send name on Enter key
     nameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-            const name = nameInput.value.trim().substring(0, 20);
+            const name = sanitizePlayerName(nameInput.value);
             if (name) {
+                nameInput.value = name; // Update field with sanitized value
                 localStorage.setItem('playerName', name);
                 if (GameState.mode === 'multiplayer' && GameState.isConnected) {
                     sendToServer({ type: 'setName', name: name });

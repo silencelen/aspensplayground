@@ -645,7 +645,11 @@ if (sslCerts) {
 }
 
 // Create WebSocket server (shared by both HTTP and HTTPS)
-const wss = new WebSocket.Server({ noServer: true });
+// maxPayload limits message size to prevent memory exhaustion attacks
+const wss = new WebSocket.Server({
+    noServer: true,
+    maxPayload: 64 * 1024  // 64KB max message size
+});
 
 // Handle WebSocket upgrades for both servers
 function handleUpgrade(request, socket, head) {
@@ -889,11 +893,13 @@ function loadLeaderboard() {
 }
 
 function saveLeaderboard() {
-    try {
-        fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboard, null, 2));
-    } catch (e) {
-        log(`Error saving leaderboard: ${e.message}`, 'ERROR');
-    }
+    // Use async write to avoid blocking the event loop
+    const data = JSON.stringify(leaderboard, null, 2);
+    fs.writeFile(LEADERBOARD_FILE, data, (err) => {
+        if (err) {
+            log(`Error saving leaderboard: ${err.message}`, 'ERROR');
+        }
+    });
 }
 
 function addToLeaderboard(name, score, wave, kills) {
@@ -1722,23 +1728,30 @@ function cleanupEmptyRooms() {
     }
 }
 
-// Legacy compatibility - points to first room or creates one
+// Legacy compatibility - points to first room (does NOT auto-create to prevent memory leaks)
 // This getter ensures existing code that uses GameState still works
 const GameState = new Proxy({}, {
     get(target, prop) {
-        // Get the first room or create one
-        if (gameRooms.size === 0) {
-            createGameRoom();
-        }
+        // Get the first room - don't auto-create to prevent orphaned rooms from timer callbacks
         const firstRoom = gameRooms.values().next().value;
-        return firstRoom ? firstRoom[prop] : undefined;
+        if (!firstRoom) {
+            // Return safe defaults for common properties to prevent crashes
+            if (prop === 'isRunning') return false;
+            if (prop === 'zombies') return new Map();
+            if (prop === 'players') return new Map();
+            if (prop === 'pickups') return new Map();
+            return undefined;
+        }
+        return firstRoom[prop];
     },
     set(target, prop, value) {
-        if (gameRooms.size === 0) {
-            createGameRoom();
-        }
+        // Only set if a room exists - don't create orphaned rooms
         const firstRoom = gameRooms.values().next().value;
-        if (firstRoom) firstRoom[prop] = value;
+        if (firstRoom) {
+            firstRoom[prop] = value;
+        } else {
+            log(`Warning: Attempted to set GameState.${String(prop)} with no active rooms`, 'WARN');
+        }
         return true;
     }
 });
@@ -2676,6 +2689,7 @@ function stopGameInRoom(room) {
     room.isRunning = false;
     room.isInLobby = true;
 
+    // Clear all timers and intervals to prevent memory leaks
     if (room.spawnInterval) {
         clearInterval(room.spawnInterval);
         room.spawnInterval = null;
@@ -2688,11 +2702,19 @@ function stopGameInRoom(room) {
         clearInterval(room.countdownTimer);
         room.countdownTimer = null;
     }
+    if (room.shopTimeout) {
+        clearTimeout(room.shopTimeout);
+        room.shopTimeout = null;
+    }
 
     // Release zombies to pool before clearing
     room.zombies.forEach(zombie => ZombiePool.release(zombie));
     room.zombies.clear();
     room.pickups.clear();
+
+    // Clear shop state
+    room.shopOpen = false;
+    room.shopPlayersReady.clear();
 
     log(`Game stopped in room ${room.id}`, 'GAME');
 }
@@ -2994,7 +3016,25 @@ function isValidDirection(dir) {
 
 function sanitizeString(str, maxLength = 50) {
     if (typeof str !== 'string') return '';
-    return str.substring(0, maxLength).replace(/[<>]/g, '');
+
+    // Remove control characters and zero-width characters
+    let sanitized = str.replace(/[\x00-\x1F\x7F\u200B-\u200D\uFEFF]/g, '');
+
+    // Remove HTML/script tags and entities
+    sanitized = sanitized.replace(/[<>&"'`]/g, '');
+
+    // Collapse multiple spaces into one
+    sanitized = sanitized.replace(/\s+/g, ' ').trim();
+
+    // Limit length
+    sanitized = sanitized.substring(0, maxLength);
+
+    // Must have at least one alphanumeric character for player names
+    if (maxLength <= 20 && !/[a-zA-Z0-9]/.test(sanitized)) {
+        return '';
+    }
+
+    return sanitized;
 }
 
 function handleMessage(playerId, message) {
