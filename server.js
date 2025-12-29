@@ -3208,9 +3208,9 @@ function handleMessage(playerId, message) {
 
         case 'ping':
             // Respond to ping with pong for latency tracking
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (player.ws && player.ws.readyState === WebSocket.OPEN) {
                 try {
-                    ws.send(JSON.stringify({ type: 'pong', timestamp: message.timestamp }));
+                    player.ws.send(JSON.stringify({ type: 'pong', timestamp: message.timestamp }));
                 } catch (e) {
                     log(`Pong send error: ${e.message}`, 'ERROR');
                 }

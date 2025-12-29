@@ -5790,7 +5790,8 @@ const ZombieSkeleton = {
         }
 
         // Apply rotation to face direction
-        if (zombie.rotation !== undefined) {
+        // In multiplayer, interpolation handles rotation smoothly via applyInterpolation()
+        if (zombie.rotation !== undefined && GameState.mode === 'singleplayer') {
             zombie.mesh.rotation.y = zombie.rotation;
         }
 
