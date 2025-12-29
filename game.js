@@ -9080,7 +9080,6 @@ function reload() {
             // Hide reload progress indicator with completion flash
             if (reloadProgress) {
                 reloadProgress.classList.add('complete');
-                if (reloadText) reloadText.textContent = 'READY';
                 setTimeout(() => {
                     reloadProgress.style.display = 'none';
                     reloadProgress.classList.remove('complete');
