@@ -8984,7 +8984,6 @@ function reload() {
     // Show reload progress indicator
     const reloadProgress = document.getElementById('reload-progress');
     const reloadFill = reloadProgress ? reloadProgress.querySelector('.reload-fill') : null;
-    const reloadText = document.getElementById('reload-text');
     if (reloadProgress) {
         reloadProgress.style.display = 'block';
         reloadProgress.classList.remove('complete');
@@ -9016,9 +9015,6 @@ function reload() {
             } else {
                 reloadFill.style.stroke = '#00ff00';
             }
-        }
-        if (reloadText) {
-            reloadText.textContent = Math.round(progress * 100) + '%';
         }
 
         if (!weapon.model || !weapon.magazine) {
