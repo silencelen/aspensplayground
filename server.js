@@ -3360,19 +3360,14 @@ setInterval(() => {
                 totalScore: room.totalScore
             };
 
-            // Send personalized sync to each player (interest management)
+            // Send ALL zombies to ALL players (interest management was causing ID mismatch bugs)
+            const allZombies = Array.from(room.zombies.values());
+            const binaryData = BinaryProtocol.encodeSyncFromArray(allZombies, gameState);
+
             room.players.forEach((player, playerId) => {
                 if (!player.ws || player.ws.readyState !== WebSocket.OPEN) return;
-                if (!player.isAlive || !player.position) return;
+                if (!player.isAlive) return;
 
-                // Filter zombies relevant to this player using spatial grid
-                const relevantZombies = getRelevantZombies(
-                    player.position,
-                    playerId
-                );
-
-                // Encode and send personalized update
-                const binaryData = BinaryProtocol.encodeSyncFromArray(relevantZombies, gameState);
                 try {
                     player.ws.send(binaryData);
                 } catch (e) {
