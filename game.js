@@ -4926,17 +4926,68 @@ function showClickToStartOverlay() {
     };
 }
 
-function handleGameOver(message) {
+async function handleGameOver(message) {
     DebugLog.log(`Game Over! Wave: ${message.wave}, Kills: ${message.totalKills}`, 'error');
 
     GameState.isRunning = false;
     GameState.isGameOver = true;
 
+    // Display score (use player's individual score, not room total)
+    const finalScore = document.getElementById('final-score');
+    if (finalScore) finalScore.textContent = `Score: ${playerState.score.toLocaleString()}`;
+
+    // Update statistics dashboard using local tracking
+    const statAccuracy = document.getElementById('stat-accuracy');
+    const statKills = document.getElementById('stat-kills');
+    const statHeadshots = document.getElementById('stat-headshots');
+    const statWave = document.getElementById('stat-wave');
+    const statDamage = document.getElementById('stat-damage');
+    const statTime = document.getElementById('stat-time');
+    const statFavoriteWeapon = document.getElementById('stat-favorite-weapon');
+    const statBestStreak = document.getElementById('stat-best-streak');
+    if (statAccuracy) statAccuracy.textContent = `${GameStats.getAccuracy()}%`;
+    if (statKills) statKills.textContent = playerState.kills;
+    if (statHeadshots) statHeadshots.textContent = GameStats.headshots;
+    if (statWave) statWave.textContent = message.wave;
+    if (statDamage) statDamage.textContent = GameStats.damageDealt.toLocaleString();
+    if (statTime) statTime.textContent = GameStats.getSurvivalTime();
+    if (statFavoriteWeapon) statFavoriteWeapon.textContent = GameStats.getFavoriteWeapon();
+    if (statBestStreak) statBestStreak.textContent = GameStats.bestKillStreak;
+
+    // Submit score to leaderboard (not in dev mode)
+    const rankResult = document.getElementById('rank-result');
+    let result = { added: false, rank: -1 };
+
+    if (DevSettings.godMode || DevSettings.infiniteAmmo) {
+        const cheats = [];
+        if (DevSettings.godMode) cheats.push('GOD MODE');
+        if (DevSettings.infiniteAmmo) cheats.push('INFINITE AMMO');
+        if (rankResult) rankResult.innerHTML = `<span style="color: #ff6600;">${cheats.join(' + ')} - Score not recorded</span>`;
+        await fetchLeaderboard(); // Just refresh leaderboard
+    } else {
+        const playerName = getPlayerName();
+        result = await submitScore(playerName);
+
+        // Display rank result
+        if (rankResult) {
+            if (result.added && result.rank > 0) {
+                rankResult.innerHTML = `<span class="new-highscore">NEW HIGH SCORE! #${result.rank}</span>`;
+            } else if (cachedLeaderboard.length > 0) {
+                const minScore = cachedLeaderboard[cachedLeaderboard.length - 1].score;
+                const diff = minScore - playerState.score;
+                rankResult.textContent = `${diff.toLocaleString()} points away from Top 10`;
+            } else {
+                rankResult.textContent = '';
+            }
+        }
+    }
+
+    // Render leaderboard with highlight
+    renderLeaderboard('gameover-leaderboard-content', result.rank);
+
     document.exitPointerLock();
     hideMobileControls();
     setElementDisplay('game-over-screen', 'flex');
-    const finalScore = document.getElementById('final-score');
-    if (finalScore) finalScore.textContent = `Score: ${message.totalScore}`;
     setElementDisplay('hud', 'none');
     setElementDisplay('crosshair', 'none');
 }
