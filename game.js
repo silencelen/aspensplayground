@@ -4831,6 +4831,9 @@ function handleGameStart(message) {
     weapon.ammo = CONFIG.player.startAmmo;
     weapon.reserveAmmo = CONFIG.player.reserveAmmo;
 
+    // Reset game statistics (sets startTime for survival timer)
+    GameStats.reset();
+
     // Reset player position
     player.position.set(0, CONFIG.player.height, 0);
 
