@@ -577,15 +577,17 @@ const ZombiePool = {
 
     acquire(zombieData) {
         let mesh;
-        if (this.available.length > 0) {
-            // Reuse existing mesh
-            mesh = this.available.pop();
+        // Find a mesh of the same type to reuse (avoid visual mismatch)
+        const sameTypeIndex = this.available.findIndex(m => m.userData.zombieType === zombieData.type);
+        if (sameTypeIndex >= 0) {
+            // Reuse mesh of same type
+            mesh = this.available.splice(sameTypeIndex, 1)[0];
             this.resetMesh(mesh, zombieData);
-            DebugLog.log(`Pool: Reused zombie mesh (${this.available.length} available)`, 'info');
+            DebugLog.log(`Pool: Reused ${zombieData.type} mesh (${this.available.length} available)`, 'info');
         } else {
-            // Create new mesh
+            // Create new mesh for this type
             mesh = createZombieMeshPooled(zombieData);
-            DebugLog.log(`Pool: Created new zombie mesh`, 'info');
+            DebugLog.log(`Pool: Created new ${zombieData.type} mesh`, 'info');
         }
         mesh.visible = true;
         scene.add(mesh);
@@ -3795,7 +3797,7 @@ function connectToServer() {
 
 // ==================== BINARY PROTOCOL DECODER ====================
 const BinaryMsgType = { SYNC: 1, ZOMBIE_SPAWN: 2, ZOMBIE_KILL: 3, PLAYER_POS: 4 };
-const ZombieTypes = ['normal', 'runner', 'tank', 'boss'];
+const ZombieTypes = ['normal', 'runner', 'crawler', 'tank', 'spitter', 'exploder', 'minion', 'boss'];
 
 function handleBinaryMessage(view) {
     const msgType = view.getUint8(0);
@@ -3982,6 +3984,26 @@ function handleServerMessage(message) {
 
         case 'pong':
             handlePong(message);
+            break;
+
+        case 'zombieAbility':
+            handleZombieAbility(message);
+            break;
+
+        case 'bossGroundSlam':
+            handleBossGroundSlam(message);
+            break;
+
+        case 'bossCharge':
+            handleBossCharge(message);
+            break;
+
+        case 'bossSummon':
+            handleBossSummon(message);
+            break;
+
+        case 'exploderExplosion':
+            handleExploderExplosion(message);
             break;
 
         default:
@@ -4448,6 +4470,200 @@ function handleZombieAttack(message) {
             playSound('zombieAttack');
         }
     }
+}
+
+function handleZombieAbility(message) {
+    const zombie = zombies.get(message.zombieId);
+    if (!zombie) return;
+
+    // Initialize abilityState if needed
+    if (!zombie.abilityState) {
+        zombie.abilityState = {
+            isLeaping: false,
+            leapStartTime: 0,
+            leapStartPos: null,
+            leapTargetPos: null,
+            isCharging: false,
+            chargeStartTime: 0,
+            chargeDirection: null,
+            lastAbilityUse: 0,
+            abilityCooldown: 4000
+        };
+    }
+
+    const now = performance.now();
+
+    if (message.ability === 'leap') {
+        zombie.abilityState.isLeaping = true;
+        zombie.abilityState.leapStartTime = now;
+        zombie.abilityState.leapStartPos = { x: zombie.position.x, z: zombie.position.z };
+        // Target position will be interpolated by server sync
+        zombie.abilityState.leapTargetPos = { x: zombie.position.x, z: zombie.position.z };
+        DebugLog.log(, 'game');
+    } else if (message.ability === 'charge') {
+        zombie.abilityState.isCharging = true;
+        zombie.abilityState.chargeStartTime = now;
+        DebugLog.log(, 'game');
+    }
+}
+
+function handleBossGroundSlam(message) {
+    const zombie = zombies.get(message.zombieId);
+    if (!zombie || !zombie.mesh) return;
+
+    // Visual warning - boss raises arms
+    if (zombie.mesh.userData.leftArm) {
+        zombie.mesh.userData.leftArm.rotation.x = -Math.PI / 2;
+        zombie.mesh.userData.rightArm.rotation.x = -Math.PI / 2;
+    }
+
+    // Create warning circle on ground
+    const radius = zombie.bossAttackState?.attacks?.groundSlam?.radius || 6;
+    const warningGeo = new THREE.RingGeometry(0.5, radius, 32);
+    const warningMat = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide
+    });
+    const warning = new THREE.Mesh(warningGeo, warningMat);
+    warning.rotation.x = -Math.PI / 2;
+    warning.position.copy(zombie.mesh.position);
+    warning.position.y = 0.1;
+    scene.add(warning);
+
+    // Animate warning circle then create slam effect
+    const startTime = Date.now();
+    const windupTime = 800;
+    function animateWarning() {
+        const elapsed = Date.now() - startTime;
+        if (elapsed > windupTime) {
+            scene.remove(warning);
+            warningGeo.dispose();
+            warningMat.dispose();
+            // Create slam effect
+            createGroundSlamEffect(zombie.mesh.position, radius);
+            // Reset arms
+            if (zombie.mesh.userData.leftArm) {
+                zombie.mesh.userData.leftArm.rotation.x = 0;
+                zombie.mesh.userData.rightArm.rotation.x = 0;
+            }
+            return;
+        }
+        // Pulse warning
+        const pulse = Math.sin(elapsed * 0.02) * 0.3 + 0.5;
+        warning.material.opacity = pulse;
+        requestAnimationFrame(animateWarning);
+    }
+    animateWarning();
+    DebugLog.log('Boss ground slam incoming!', 'game');
+}
+
+function handleBossCharge(message) {
+    const zombie = zombies.get(message.zombieId);
+    if (!zombie || !zombie.mesh) return;
+
+    // Visual indicator - boss leans forward
+    zombie.mesh.rotation.x = 0.3;
+
+    // Create warning line from boss toward player
+    if (playerState && playerState.position) {
+        createChargeWarningLine(zombie.mesh.position, playerState.position);
+    }
+
+    // Reset lean after charge duration
+    setTimeout(() => {
+        if (zombie.mesh) zombie.mesh.rotation.x = 0;
+    }, GameCore.Constants.BOSS.ATTACKS.charge.duration || 1500);
+
+    DebugLog.log('Boss charging!', 'game');
+}
+
+function handleBossSummon(message) {
+    const zombie = zombies.get(message.zombieId);
+    if (!zombie || !zombie.mesh) return;
+
+    // Spawn particle effect around boss
+    for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const particleGeo = new THREE.SphereGeometry(0.2, 8, 8);
+        const particleMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const particle = new THREE.Mesh(particleGeo, particleMat);
+        particle.position.copy(zombie.mesh.position);
+        particle.position.y += 1;
+        scene.add(particle);
+
+        const velocity = { x: Math.cos(angle) * 3, y: 2, z: Math.sin(angle) * 3 };
+        const startTime = Date.now();
+        function animateParticle() {
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (elapsed > 0.8) {
+                scene.remove(particle);
+                particleGeo.dispose();
+                particleMat.dispose();
+                return;
+            }
+            particle.position.x += velocity.x * 0.016;
+            particle.position.y += velocity.y * 0.016 - elapsed * 0.3;
+            particle.position.z += velocity.z * 0.016;
+            particle.material.opacity = 1 - elapsed / 0.8;
+            requestAnimationFrame(animateParticle);
+        }
+        animateParticle();
+    }
+    DebugLog.log('Boss summoning minions!', 'game');
+}
+
+function handleExploderExplosion(message) {
+    // Visual-only explosion for multiplayer (server handles damage)
+    const explosionPos = new THREE.Vector3(message.position.x, 1, message.position.z);
+    const radius = message.radius || GameCore.Combat.getExplosionRadius();
+
+    // Visual explosion effect
+    const explosionGeo = new THREE.SphereGeometry(0.5, 16, 16);
+    const explosionMat = new THREE.MeshBasicMaterial({
+        color: 0xff6600,
+        transparent: true,
+        opacity: 1
+    });
+    const explosion = new THREE.Mesh(explosionGeo, explosionMat);
+    explosion.position.copy(explosionPos);
+    scene.add(explosion);
+
+    // Explosion particles
+    for (let i = 0; i < 20; i++) {
+        spawnDebris(explosionPos, 1);
+    }
+    for (let i = 0; i < 15; i++) {
+        spawnBloodParticles(explosionPos, 1);
+    }
+
+    // Screen shake if player is close
+    if (player && player.position) {
+        const distToPlayer = player.position.distanceTo(explosionPos);
+        if (distToPlayer < radius * 2) {
+            screenShake(0.3 * (1 - distToPlayer / (radius * 2)));
+        }
+    }
+
+    // Animate explosion
+    const startTime = Date.now();
+    function animateExplosion() {
+        const elapsed = Date.now() - startTime;
+        const progress = elapsed / 500;
+
+        if (progress < 1) {
+            explosion.scale.setScalar(1 + progress * 8);
+            explosionMat.opacity = 1 - progress;
+            requestAnimationFrame(animateExplosion);
+        } else {
+            scene.remove(explosion);
+            explosionGeo.dispose();
+            explosionMat.dispose();
+        }
+    }
+    animateExplosion();
+    DebugLog.log('Exploder detonated!', 'game');
 }
 
 function handleZombieKilled(message) {
@@ -10290,8 +10506,12 @@ function updateHUD() {
         }
     }
 
-    // Total enemies left = alive zombies + zombies yet to spawn
-    const totalEnemiesLeft = countAliveZombies() + (GameState.zombiesToSpawn || 0);
+    // Total enemies left calculation differs by mode
+    // Singleplayer: alive zombies + zombies yet to spawn (client-side tracking)
+    // Multiplayer: use server-provided zombiesRemaining (authoritative)
+    const totalEnemiesLeft = GameState.mode === "multiplayer"
+        ? GameState.zombiesRemaining
+        : countAliveZombies() + (GameState.zombiesToSpawn || 0);
     const waveDisplay = document.getElementById('wave-display');
     const scoreDisplay = document.getElementById('score-display');
     const killsDisplay = document.getElementById('kills-display');
@@ -11148,6 +11368,26 @@ function updateZombieAnimations(delta) {
         // Apply smooth interpolation instead of snapping position
         if (GameState.mode === 'multiplayer') {
             Interpolation.applyInterpolation(zombie, zombie.mesh);
+            
+            // Animate leap/charge Y-height for multiplayer (server handles X/Z)
+            if (zombie.abilityState && zombie.abilityState.isLeaping) {
+                const leapDuration = GameCore.Constants.ABILITIES.runner.leap.duration;
+                const leapProgress = Math.min(1, (performance.now() - zombie.abilityState.leapStartTime) / leapDuration);
+                const height = 2.5 * Math.sin(leapProgress * Math.PI);
+                zombie.mesh.position.y = height;
+                
+                if (leapProgress >= 1) {
+                    zombie.abilityState.isLeaping = false;
+                    zombie.mesh.position.y = 0;
+                }
+            } else if (zombie.abilityState && zombie.abilityState.isCharging) {
+                const chargeDuration = GameCore.Constants.ABILITIES.tank.charge.duration;
+                const chargeProgress = (performance.now() - zombie.abilityState.chargeStartTime) / chargeDuration;
+                
+                if (chargeProgress >= 1) {
+                    zombie.abilityState.isCharging = false;
+                }
+            }
         } else if (zombie.isAlive) {
             // Singleplayer: direct position update (collision system handles mesh sync now)
             zombie.mesh.position.x = zombie.position.x;
@@ -11511,114 +11751,27 @@ function resetDestructibles() {
 }
 
 // ==================== WAVE SPAWNING SYSTEM ====================
+// Now delegates to GameCore for all shared game logic
 const WaveSystem = {
     currentBoss: null,
     minionSpawnTimer: null,
 
-    // Check if this is a boss wave (every 10 waves)
-    isBossWave(wave) {
-        return wave > 0 && wave % 10 === 0;
+    // Delegate to GameCore for shared logic
+    isBossWave: (wave) => GameCore.WaveSystem.isBossWave(wave),
+    getZombieCount: (wave) => GameCore.WaveSystem.getZombieCount(wave, GameState.zombiesPerWave),
+    getSpawnInterval: (wave) => GameCore.WaveSystem.getSpawnInterval(wave),
+    getBossProps: (wave) => GameCore.WaveSystem.getBossProps(wave),
+    getBossName: (level) => GameCore.WaveSystem.getBossName(level),
+    getZombieType: (wave) => GameCore.WaveSystem.getZombieType(wave),
+    getWaveBonus: (wave) => GameCore.WaveSystem.getWaveBonus(wave),
+    
+    // typeProps now references GameCore constants
+    get typeProps() {
+        return GameCore.Constants.ZOMBIE_TYPES;
     },
-
-    // Calculate zombie count for a wave (exponential scaling)
-    getZombieCount(wave) {
-        if (this.isBossWave(wave)) return 1; // Boss wave = just the boss
-        const base = GameState.zombiesPerWave;
-        return Math.floor(base + (wave - 1) * 2 + Math.pow(wave, 1.3));
-    },
-
-    // Get spawn interval (faster spawning in later waves)
-    getSpawnInterval(wave) {
-        return Math.max(800, 2000 - wave * 100);
-    },
-
-    // Boss wave properties scaling with wave number
-    getBossProps(wave) {
-        const bossLevel = Math.floor(wave / 10);
-        return {
-            health: 1500 + bossLevel * 500,
-            maxHealth: 1500 + bossLevel * 500,
-            speed: 1.8 + bossLevel * 0.1,
-            damage: 50 + bossLevel * 10,
-            scale: 2.5 + bossLevel * 0.2,
-            points: 2000 + bossLevel * 500,
-            name: this.getBossName(bossLevel),
-            // Boss attack phases and abilities
-            attacks: {
-                groundSlam: { cooldown: 8000, damage: 40, radius: 6 },
-                charge: { cooldown: 12000, damage: 60, speed: 12 },
-                summon: { cooldown: 15000, count: 2 + bossLevel }
-            }
-        };
-    },
-
-    getBossName(level) {
-        const names = [
-            'THE ABOMINATION',
-            'NIGHTMARE KING',
-            'DEATH BRINGER',
-            'ETERNAL HORROR',
-            'APOCALYPSE LORD'
-        ];
-        return names[Math.min(level - 1, names.length - 1)] || `BOSS LV.${level}`;
-    },
-
-    // Determine zombie type based on wave with weighted probabilities
-    getZombieType(wave) {
-        const roll = Math.random() * 100;
-
-        if (wave <= 2) return 'normal';
-
-        if (wave <= 4) {
-            if (roll < 20) return 'runner';
-            return 'normal';
-        }
-
-        if (wave <= 6) {
-            if (roll < 15) return 'runner';
-            if (roll < 30) return 'crawler';
-            return 'normal';
-        }
-
-        if (wave <= 8) {
-            if (roll < 15) return 'runner';
-            if (roll < 27) return 'crawler';
-            if (roll < 37) return 'tank';
-            return 'normal';
-        }
-
-        if (roll < 12) return 'runner';
-        if (roll < 22) return 'crawler';
-        if (roll < 32) return 'tank';
-        if (roll < 40) return 'spitter';
-        if (roll < 48) return 'exploder';
-        return 'normal';
-    },
-
-    // Enemy type properties with all new types
-    typeProps: {
-        normal: { health: 100, speed: 3.0, damage: 15, scale: 1.0, points: 100 },
-        runner: { health: 50, speed: 5.5, damage: 10, scale: 0.85, points: 120 },
-        crawler: { health: 80, speed: 4.2, damage: 20, scale: 0.9, points: 130 },
-        tank: { health: 350, speed: 1.8, damage: 35, scale: 1.5, points: 200 },
-        spitter: { health: 70, speed: 2.8, damage: 12, scale: 0.95, points: 150 },
-        exploder: { health: 60, speed: 3.5, damage: 50, scale: 1.1, points: 180 },
-        minion: { health: 40, speed: 4.0, damage: 8, scale: 0.7, points: 50 }
-    },
-
-    // Scale enemy stats by wave (enemies get tougher)
-    scaleByWave(props, wave) {
-        const healthMultiplier = 1 + (wave - 1) * 0.08;
-        const damageMultiplier = 1 + (wave - 1) * 0.05;
-        const speedMultiplier = 1 + (wave - 1) * 0.02;
-
-        return {
-            ...props,
-            health: Math.floor(props.health * healthMultiplier),
-            damage: Math.floor(props.damage * damageMultiplier),
-            speed: props.speed * speedMultiplier * (0.9 + Math.random() * 0.2)
-        };
-    },
+    
+    // scaleByWave delegates to GameCore
+    scaleByWave: (props, wave) => GameCore.WaveSystem.scaleByWave(props, wave, true),
 
     // Start minion spawning for boss fight
     startMinionSpawning(bossZombie) {
@@ -12454,7 +12607,7 @@ function updateSinglePlayerZombies(delta) {
 
         // Runner Leap Attack - leaps toward player when at medium range
         if (zombie.type === 'runner' && zombie.abilityState.isLeaping) {
-            const leapDuration = 400; // ms
+            const leapDuration = GameCore.Constants.ABILITIES.runner.leap.duration;
             const leapProgress = Math.min(1, (now - zombie.abilityState.leapStartTime) / leapDuration);
 
             // Parabolic leap trajectory
@@ -12475,7 +12628,7 @@ function updateSinglePlayerZombies(delta) {
                     Math.pow(zombie.position.z - playerPos.z, 2)
                 );
                 if (landDist < 2) {
-                    damagePlayer(zombie.damage * 1.5);
+                    damagePlayer(GameCore.ZombieAI.getLeapDamage(zombie.damage));
                     playSound('zombieAttack');
                     screenShake(0.3);
                 }
@@ -12485,7 +12638,7 @@ function updateSinglePlayerZombies(delta) {
 
         // Tank Charge Attack - charges in a straight line
         if (zombie.type === 'tank' && zombie.abilityState.isCharging) {
-            const chargeDuration = 1200; // ms
+            const chargeDuration = GameCore.Constants.ABILITIES.tank.charge.duration;
             const chargeProgress = (now - zombie.abilityState.chargeStartTime) / chargeDuration;
             const chargeSpeed = zombie.speed * 4; // Much faster during charge
 
@@ -12510,7 +12663,7 @@ function updateSinglePlayerZombies(delta) {
                     Math.pow(zombie.position.z - playerPos.z, 2)
                 );
                 if (chargeDist < 1.5) {
-                    damagePlayer(zombie.damage * 2);
+                    damagePlayer(GameCore.ZombieAI.getChargeDamage(zombie.damage));
                     playSound('zombieAttack');
                     screenShake(0.4);
                     zombie.abilityState.isCharging = false;
@@ -13343,11 +13496,11 @@ function killSinglePlayerZombie(zombieId, isHeadshot) {
 function createExplosion(position) {
     const explosionPos = new THREE.Vector3(position.x, 1, position.z);
 
-    // Check if player is in explosion radius
+    // Check if player is in explosion radius - use GameCore
     const playerDist = player.position.distanceTo(explosionPos);
-    const explosionRadius = 5;
+    const explosionRadius = GameCore.Combat.getExplosionRadius();
     if (playerDist < explosionRadius) {
-        const damage = Math.floor(40 * (1 - playerDist / explosionRadius));
+        const damage = GameCore.Combat.calculateExploderDamage(playerDist);
         damagePlayer(damage);
         DebugLog.log(`Caught in explosion! -${damage} HP`, 'warn');
     }

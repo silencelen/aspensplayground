@@ -15,6 +15,7 @@ const { execSync } = require('child_process');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const cors = require('cors');
+const GameCore = require('./modules/GameCore.js');
 
 // ==================== RATE LIMITING CONFIG ====================
 const RATE_LIMIT = {
@@ -369,9 +370,10 @@ const ZombiePool = {
         zombie.rotation = 0;
         zombie.health = props.health;
         zombie.maxHealth = props.health;
-        zombie.speed = props.speed * (0.9 + Math.random() * 0.2);
+        zombie.speed = props.speed; // Already randomized by GameCore.scaleByWave
         zombie.damage = props.damage;
         zombie.scale = props.scale;
+        zombie.points = props.points;
         zombie.isAlive = true;
         zombie.targetPlayerId = null;
         zombie.lastAttack = 0;
@@ -1879,6 +1881,25 @@ function getMaxZombiesForWave(wave) {
     const scaled = CONFIG.waves.baseMaxZombies + (wave * CONFIG.waves.maxZombiesPerWave);
     return Math.min(scaled, CONFIG.waves.absoluteMaxZombies);
 }
+// Delegate to GameCore for zombie type selection
+function getZombieTypeForWave(wave) {
+    return GameCore.WaveSystem.getZombieType(wave);
+}
+
+// Delegate to GameCore for spawn interval
+function getSpawnInterval(wave) {
+    return GameCore.WaveSystem.getSpawnInterval(wave);
+}
+
+// Delegate to GameCore for boss properties
+function getBossProps(wave) {
+    return GameCore.WaveSystem.getBossProps(wave);
+}
+
+// Delegate to GameCore for boss name
+function getBossName(level) {
+    return GameCore.WaveSystem.getBossName(level);
+}
 
 function spawnZombie() {
     if (!GameState.isRunning) return;
@@ -1903,21 +1924,34 @@ function spawnZombie() {
         case 3: position = { x: arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
     }
 
-    // Determine zombie type based on wave
-    let zombieType = 'normal';
-    const typeRoll = Math.random();
-    if (GameState.wave >= 3 && typeRoll < 0.2) zombieType = 'runner';
-    else if (GameState.wave >= 5 && typeRoll < 0.35) zombieType = 'tank';
-    else if (GameState.wave >= 7 && typeRoll < 0.15) zombieType = 'boss';
+    // Check if this is a boss wave using GameCore
+    const isBossWave = GameCore.WaveSystem.isBossWave(GameState.wave);
+    
+    let zombieType, props;
+    
+    if (isBossWave) {
+        // Boss wave - spawn boss with special properties (synced with client)
+        zombieType = 'boss';
+        const bossProps = getBossProps(GameState.wave);
+        props = {
+            health: bossProps.health,
+            maxHealth: bossProps.maxHealth,
+            speed: bossProps.speed,
+            damage: bossProps.damage,
+            scale: bossProps.scale,
+            points: bossProps.points,
+            isBossWaveBoss: true,
+            bossName: bossProps.name,
+            attacks: bossProps.attacks
+        };
+    } else {
+        // Regular wave - determine zombie type based on wave
+        zombieType = getZombieTypeForWave(GameState.wave);
 
-    const typeProps = {
-        normal: { health: 100, speed: 3, damage: 15, scale: 1 },
-        runner: { health: 50, speed: 5.4, damage: 10, scale: 0.8 },
-        tank: { health: 250, speed: 1.8, damage: 22, scale: 1.3 },
-        boss: { health: 500, speed: 1.2, damage: 37, scale: 1.8 }
-    };
-
-    const props = typeProps[zombieType];
+        // Get base props from GameCore and scale by wave
+        const baseProps = GameCore.WaveSystem.getTypeProps(zombieType);
+        props = GameCore.WaveSystem.scaleByWave(baseProps, GameState.wave, true);
+    }
 
     // Use object pool to reduce GC pressure
     const zombie = ZombiePool.acquire(id, zombieType, position, props);
@@ -1927,6 +1961,36 @@ function spawnZombie() {
 
     log(`Spawned ${zombieType} zombie ${id} at (${position.x.toFixed(1)}, ${position.z.toFixed(1)})`, 'GAME');
 
+    broadcast({
+        type: 'zombieSpawned',
+        zombie: zombie
+    });
+}
+
+// Spawn minion for boss summon ability (synced with client)
+function spawnMinion(bossPosition) {
+    const id = `minion_${++GameState.lastZombieId}`;
+    
+    // Spawn around the boss
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 2 + Math.random() * 3;
+    const position = {
+        x: bossPosition.x + Math.cos(angle) * dist,
+        y: 0,
+        z: bossPosition.z + Math.sin(angle) * dist
+    };
+    
+    // Get minion properties from GameCore
+    const props = GameCore.WaveSystem.getTypeProps('minion');
+    
+    const zombie = ZombiePool.acquire(id, 'minion', position, props);
+    zombie.isMinion = true;
+    
+    GameState.zombies.set(id, zombie);
+    // Minions don't count toward zombiesSpawned/remaining
+    
+    log(`Boss summoned minion ${id}`, 'GAME');
+    
     broadcast({
         type: 'zombieSpawned',
         zombie: zombie
@@ -1967,16 +2031,184 @@ function updateZombies(room = null) {
         // Calculate direction to player
         const dx = closestPlayer.position.x - zombie.position.x;
         const dz = closestPlayer.position.z - zombie.position.z;
+        
+        // Initialize ability state using GameCore
+        if (!zombie.abilityState) {
+            zombie.abilityState = GameCore.ZombieAI.createAbilityState(zombie.type);
+        }
+        
+        const canUseAbility = now - zombie.abilityState.lastAbilityUse > zombie.abilityState.abilityCooldown;
+        
+        // Runner leap attack - leaps toward player at medium range (synced with client)
+        if (zombie.type === 'runner' && zombie.abilityState.isLeaping) {
+            const leapDuration = GameCore.Constants.ABILITIES.runner.leap.duration;
+            const leapProgress = Math.min(1, (now - zombie.abilityState.leapStartTime) / leapDuration);
+            
+            const startPos = zombie.abilityState.leapStartPos;
+            const targetPos = zombie.abilityState.leapTargetPos;
+            
+            zombie.position.x = startPos.x + (targetPos.x - startPos.x) * leapProgress;
+            zombie.position.z = startPos.z + (targetPos.z - startPos.z) * leapProgress;
+            
+            if (leapProgress >= 1) {
+                zombie.abilityState.isLeaping = false;
+                // Damage player if close after leap (synced with singleplayer)
+                const landDist = Math.sqrt(
+                    Math.pow(zombie.position.x - closestPlayer.position.x, 2) +
+                    Math.pow(zombie.position.z - closestPlayer.position.z, 2)
+                );
+                if (landDist < 2) {
+                    damagePlayer(closestPlayer.id, GameCore.ZombieAI.getLeapDamage(zombie.damage));
+                }
+            }
+            return;
+        }
+        
+        // Tank charge attack - charges in a straight line (synced with singleplayer)
+        if (zombie.type === 'tank' && zombie.abilityState.isCharging) {
+            const chargeDuration = GameCore.Constants.ABILITIES.tank.charge.duration;
+            const chargeProgress = (now - zombie.abilityState.chargeStartTime) / chargeDuration;
+            const chargeSpeed = zombie.speed * 4; // synced with singleplayer
 
+            if (chargeProgress < 1) {
+                const moveX = zombie.abilityState.chargeDirection.x * chargeSpeed * delta;
+                const moveZ = zombie.abilityState.chargeDirection.z * chargeSpeed * delta;
+                zombie.position.x += moveX;
+                zombie.position.z += moveZ;
+
+                // Check if hit player during charge (synced with singleplayer)
+                const chargeDist = Math.sqrt(
+                    Math.pow(zombie.position.x - closestPlayer.position.x, 2) +
+                    Math.pow(zombie.position.z - closestPlayer.position.z, 2)
+                );
+                if (chargeDist < 1.5) {
+                    damagePlayer(closestPlayer.id, GameCore.ZombieAI.getChargeDamage(zombie.damage));
+                    zombie.abilityState.isCharging = false;
+                }
+            } else {
+                zombie.abilityState.isCharging = false;
+            }
+            return;
+        }
+        
+        // Boss special attacks (synced with client)
+        if (zombie.isBossWaveBoss) {
+            // Initialize boss attack state using GameCore
+            if (!zombie.bossAttackState) {
+                zombie.bossAttackState = GameCore.BossAI.createAttackState(zombie.attacks);
+            }
+            
+            const bossState = zombie.bossAttackState;
+            
+            // Update phase based on health using GameCore
+            const healthPercent = zombie.health / zombie.maxHealth;
+            bossState.phase = GameCore.BossAI.updatePhase(healthPercent);
+            const cooldownMult = GameCore.BossAI.getCooldownMultiplier(bossState.phase);
+            
+            // Handle ongoing charge
+            if (bossState.isCharging) {
+                const chargeSpeed = 12;
+                zombie.position.x += bossState.chargeDirection.x * chargeSpeed * delta;
+                zombie.position.z += bossState.chargeDirection.z * chargeSpeed * delta;
+                
+                if (now - bossState.chargeStartTime > 1500 || distance < 2) {
+                    bossState.isCharging = false;
+                    if (distance < 3) {
+                        damagePlayer(closestPlayer.id, bossState.attacks.charge.damage);
+                    }
+                }
+                return;
+            }
+            
+            // Ground Slam - when close to player
+            if (distance < 8 && now - bossState.lastGroundSlam > bossState.attacks.groundSlam.cooldown * cooldownMult) {
+                bossState.lastGroundSlam = now;
+                // Damage all nearby players
+                GameState.players.forEach((p, pid) => {
+                    if (!p.isAlive) return;
+                    const pdx = p.position.x - zombie.position.x;
+                    const pdz = p.position.z - zombie.position.z;
+                    const pDist = Math.sqrt(pdx * pdx + pdz * pdz);
+                    if (pDist < bossState.attacks.groundSlam.radius) {
+                        damagePlayer(pid, bossState.attacks.groundSlam.damage);
+                    }
+                });
+                broadcast({ type: 'bossGroundSlam', zombieId: zombie.id, position: zombie.position });
+            }
+            
+            // Charge - when far from player
+            if (distance > 10 && distance < 25 && now - bossState.lastCharge > bossState.attacks.charge.cooldown * cooldownMult) {
+                bossState.lastCharge = now;
+                bossState.isCharging = true;
+                bossState.chargeStartTime = now;
+                bossState.chargeDirection = { x: dx / distance, z: dz / distance };
+                broadcast({ type: 'bossCharge', zombieId: zombie.id });
+            }
+            
+            // Summon minions - phase 2+
+            if (bossState.phase >= 2 && now - bossState.lastSummon > bossState.attacks.summon.cooldown * cooldownMult) {
+                bossState.lastSummon = now;
+                const minionCount = bossState.attacks.summon.count;
+                for (let i = 0; i < minionCount; i++) {
+                    spawnMinion(zombie.position);
+                }
+                broadcast({ type: 'bossSummon', zombieId: zombie.id, count: minionCount });
+            }
+        }
+        
+        // Trigger abilities at appropriate ranges
+        if (canUseAbility && !zombie.abilityState.isLeaping && !zombie.abilityState.isCharging) {
+            // Runner leap - trigger at 4-8 unit range
+            if (zombie.type === 'runner' && distance > 4 && distance < 8) {
+                zombie.abilityState.isLeaping = true;
+                zombie.abilityState.leapStartTime = now;
+                zombie.abilityState.lastAbilityUse = now;
+                zombie.abilityState.leapStartPos = { x: zombie.position.x, z: zombie.position.z };
+                zombie.abilityState.leapTargetPos = {
+                    x: closestPlayer.position.x,
+                    z: closestPlayer.position.z
+                };
+                broadcast({ type: 'zombieAbility', zombieId: zombie.id, ability: 'leap' });
+                return;
+            }
+            
+            // Tank charge - trigger at 6-12 unit range
+            if (zombie.type === 'tank' && distance > 6 && distance < 12) {
+                zombie.abilityState.isCharging = true;
+                zombie.abilityState.chargeStartTime = now;
+                zombie.abilityState.lastAbilityUse = now;
+                zombie.abilityState.chargeDirection = { x: dx / distance, z: dz / distance };
+                broadcast({ type: 'zombieAbility', zombieId: zombie.id, ability: 'charge' });
+                return;
+            }
+        }
+
+        // Attack range varies by zombie type - use GameCore
+        const attackRange = GameCore.ZombieAI.getAttackRange(zombie.type);
+        
         // Attack if close enough
-        if (distance <= CONFIG.zombie.attackRange) {
+        if (distance <= attackRange) {
             zombie.isAttacking = true;
             // Face player directly when attacking
             zombie.rotation = Math.atan2(dx, dz);
 
-            if (now - zombie.lastAttack > CONFIG.zombie.attackCooldown) {
+            // Attack cooldown varies by type - use GameCore
+            const attackCooldown = GameCore.ZombieAI.getAttackCooldown(zombie.type);
+            if (now - zombie.lastAttack > attackCooldown) {
                 zombie.lastAttack = now;
-                damagePlayer(closestPlayer.id, zombie.damage);
+                
+                // Spitter shoots projectile instead of direct damage
+                if (zombie.type === 'spitter') {
+                    broadcast({
+                        type: 'spitterAttack',
+                        zombieId: zombie.id,
+                        targetId: closestPlayer.id,
+                        damage: zombie.damage
+                    });
+                    // Spitter damage is applied when projectile hits on client
+                } else {
+                    damagePlayer(closestPlayer.id, zombie.damage);
+                }
 
                 broadcast({
                     type: 'zombieAttack',
@@ -2098,9 +2330,18 @@ function updateZombies(room = null) {
             targetZ = closestPlayer.position.z;
         }
 
-        // Move towards target
-        const moveDx = targetX - zombie.position.x;
-        const moveDz = targetZ - zombie.position.z;
+        // Spitters try to maintain distance (synced with singleplayer)
+        let finalTargetX = targetX;
+        let finalTargetZ = targetZ;
+        if (zombie.type === 'spitter' && distance < 10) {
+            // Move away from player
+            finalTargetX = zombie.position.x - dx;
+            finalTargetZ = zombie.position.z - dz;
+        }
+
+        // Move towards target (or away for retreating spitters)
+        const moveDx = finalTargetX - zombie.position.x;
+        const moveDz = finalTargetZ - zombie.position.z;
         const moveDist = Math.sqrt(moveDx * moveDx + moveDz * moveDz);
 
         if (moveDist > 0.1) {
@@ -2146,7 +2387,9 @@ function killZombie(zombieId, killerId, isHeadshot) {
     GameState.zombiesRemaining--;
     GameState.totalKills++;
 
-    const points = CONFIG.scoring.zombieKill + (isHeadshot ? CONFIG.scoring.headshot : 0);
+    // Score - use zombie's points value with headshot bonus (synced with client)
+    const basePoints = zombie.points || 100;
+    const points = basePoints + (isHeadshot ? Math.floor(basePoints * 0.5) : 0);
     GameState.totalScore += points;
 
     // Award points to killer
@@ -2161,10 +2404,35 @@ function killZombie(zombieId, killerId, isHeadshot) {
 
     log(`Zombie ${zombieId} killed by ${killerId}! Remaining: ${GameState.zombiesRemaining}`, 'SUCCESS');
 
-    // Chance to spawn pickup
-    const dropChance = Math.random();
-    if (dropChance < 0.25) {
-        spawnPickup(zombie.position, dropChance < 0.12 ? 'health' : 'ammo');
+    // Exploder zombies explode on death - use GameCore for explosion logic
+    if (zombie.type === 'exploder') {
+        const explosionRadius = GameCore.Combat.getExplosionRadius();
+        
+        GameState.players.forEach((player, playerId) => {
+            if (!player.isAlive) return;
+            const distToPlayer = GameCore.Utils.distance(zombie.position, player.position);
+            const finalDamage = GameCore.Combat.calculateExploderDamage(distToPlayer);
+            if (finalDamage > 0) {
+                damagePlayer(playerId, finalDamage);
+                log(`Exploder explosion damaged player ${playerId} for ${finalDamage}`, 'GAME');
+            }
+        });
+        
+        // Broadcast explosion for client visual effects
+        broadcast({
+            type: 'exploderExplosion',
+            position: zombie.position,
+            radius: explosionRadius
+        });
+    }
+
+    // Chance to spawn pickup - use GameCore for drop logic
+    if (GameCore.Combat.shouldDropPickup(zombie.type, zombie.isBossWaveBoss)) {
+        const pickupsToSpawn = zombie.isBossWaveBoss ? GameCore.Combat.getBossPickupCount() : 1;
+        for (let i = 0; i < pickupsToSpawn; i++) {
+            const pickupType = GameCore.Combat.rollPickupType();
+            spawnPickup(zombie.position, pickupType);
+        }
     }
 
     broadcast({
@@ -2177,7 +2445,9 @@ function killZombie(zombieId, killerId, isHeadshot) {
 
     // Check wave completion
     if (GameState.zombiesRemaining <= 0) {
-        const expectedZombies = CONFIG.waves.startZombies + (GameState.wave - 1) * CONFIG.waves.zombiesPerWave;
+        // Use same formula as startWave (synced with client)
+        const isBossWave = GameState.wave > 0 && GameState.wave % 10 === 0;
+        const expectedZombies = isBossWave ? 1 : Math.floor(5 + (GameState.wave - 1) * 2 + Math.pow(GameState.wave, 1.3));
         if (GameState.zombiesSpawned >= expectedZombies) {
             nextWave();
         }
@@ -2215,7 +2485,7 @@ function spawnPickup(position, type) {
         pickup: pickup
     });
 
-    // Remove after 15 seconds
+    // Remove after 30 seconds (synced with client)
     setTimeout(() => {
         if (GameState.pickups.has(id)) {
             GameState.pickups.delete(id);
@@ -2224,7 +2494,7 @@ function spawnPickup(position, type) {
                 pickupId: id
             });
         }
-    }, 15000);
+    }, 30000);
 }
 
 function collectPickup(pickupId, playerId) {
@@ -2241,7 +2511,10 @@ function collectPickup(pickupId, playerId) {
         log(`Player ${playerId} collected health pickup (+25 HP)`, 'GAME');
     } else if (pickup.type === 'ammo') {
         collected = true;
-        log(`Player ${playerId} collected ammo pickup`, 'GAME');
+        log(`Player ${playerId} collected ammo pickup (+15 ammo)`, 'GAME');
+    } else if (pickup.type === 'grenade') {
+        collected = true;
+        log(`Player ${playerId} collected grenade pickup (+2 grenades)`, 'GAME');
     }
 
     if (collected) {
@@ -2301,7 +2574,9 @@ function damagePlayer(playerId, damage) {
 
 // ==================== WAVE MANAGEMENT ====================
 function startWave() {
-    const zombieCount = CONFIG.waves.startZombies + (GameState.wave - 1) * CONFIG.waves.zombiesPerWave;
+    // Boss waves spawn just the boss (synced with client WaveSystem.getZombieCount)
+    const isBossWaveForCount = GameState.wave > 0 && GameState.wave % 10 === 0;
+    const zombieCount = isBossWaveForCount ? 1 : Math.floor(5 + (GameState.wave - 1) * 2 + Math.pow(GameState.wave, 1.3));
     GameState.zombiesRemaining = zombieCount;
     GameState.zombiesSpawned = 0;
 
@@ -2323,8 +2598,8 @@ function startWave() {
         log(`Map changed to ${targetMapId} for wave ${GameState.wave}`, 'GAME');
     }
 
-    // Check if this is a boss wave (every 5th wave starting at 5)
-    const isBossWave = GameState.wave >= 5 && GameState.wave % 5 === 0;
+    // Check if this is a boss wave (every 10th wave - synced with client)
+    const isBossWave = GameState.wave > 0 && GameState.wave % 10 === 0;
     if (isBossWave) {
         GameState.bossMode = true;
     }
@@ -2355,28 +2630,35 @@ function startWave() {
             clearInterval(GameState.spawnInterval);
             GameState.spawnInterval = null;
         }
-    }, CONFIG.waves.spawnInterval);
+    }, getSpawnInterval(GameState.wave));
 }
 
 function nextWave() {
     // Deactivate boss mode when wave completes
+    const wasBossWave = GameState.bossMode;
     if (GameState.bossMode) {
         GameState.bossMode = false;
     }
 
-    GameState.wave++;
-    GameState.totalScore += CONFIG.scoring.waveBonus;
+    // Calculate wave bonus (synced with client formula)
+    const completedWave = GameState.wave;
+    const waveBonus = wasBossWave
+        ? 2000 + completedWave * 200
+        : 500 + completedWave * 100;
 
-    log(`Wave ${GameState.wave - 1} complete! Opening upgrade shop...`, 'SUCCESS');
+    GameState.wave++;
+    GameState.totalScore += waveBonus;
+
+    log(`Wave ${completedWave} complete! Bonus: ${waveBonus}. Opening upgrade shop...`, 'SUCCESS');
 
     // Open shop for all players
-    openShop();
+    openShop(waveBonus);
 }
 
 // ==================== UPGRADE SHOP MANAGEMENT ====================
 const SHOP_MAX_TIME = 30000; // 30 seconds max
 
-function openShop() {
+function openShop(waveBonus = 500) {
     GameState.shopOpen = true;
     GameState.shopPlayersReady.clear();
     GameState.isPaused = true;
@@ -2386,7 +2668,7 @@ function openShop() {
         type: 'waveComplete',
         wave: GameState.wave - 1,
         nextWave: GameState.wave,
-        bonus: CONFIG.scoring.waveBonus,
+        bonus: waveBonus,
         showShop: true
     });
 
@@ -3303,7 +3585,7 @@ const BinaryProtocol = {
             const idNum = parseInt(zombie.id?.split('_')[1] || '0', 10);
             buffer.writeUInt16LE(idNum, offset); offset += 2;
             // Type encoded (1 byte): 0=normal, 1=runner, 2=tank, 3=boss
-            const typeCode = { normal: 0, runner: 1, tank: 2, boss: 3 }[zombie.type] || 0;
+            const typeCode = { normal: 0, runner: 1, crawler: 2, tank: 3, spitter: 4, exploder: 5, minion: 6, boss: 7 }[zombie.type] || 0;
             buffer.writeUInt8(typeCode, offset); offset += 1;
             // Alive flag (1 byte)
             buffer.writeUInt8(zombie.isAlive ? 1 : 0, offset); offset += 1;
