@@ -99,8 +99,12 @@ const DamageNumbers = {
 
         this.container.appendChild(number);
 
-        // Remove after animation
-        setTimeout(() => number.remove(), 1000);
+        // Remove after animation (check if still in DOM to prevent race condition)
+        setTimeout(() => {
+            if (number.parentNode) {
+                number.remove();
+            }
+        }, 1000);
     },
 
     worldToScreen(worldPos) {

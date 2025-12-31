@@ -657,9 +657,43 @@ const wss = new WebSocket.Server({
     maxPayload: 64 * 1024  // 64KB max message size
 });
 
+// Allowed WebSocket origins (add your domain here for production)
+const ALLOWED_ORIGINS = [
+    'http://localhost',
+    'http://127.0.0.1',
+    'https://localhost',
+    'https://127.0.0.1',
+    'http://aspensplayground.com',
+    'https://aspensplayground.com',
+    'http://www.aspensplayground.com',
+    'https://www.aspensplayground.com'
+];
+
+// Check if origin is allowed (supports port variations)
+function isOriginAllowed(origin) {
+    if (!origin) return false;
+    // Allow if origin matches any allowed origin (with or without port)
+    return ALLOWED_ORIGINS.some(allowed => {
+        // Exact match
+        if (origin === allowed) return true;
+        // Match with any port (e.g., http://localhost:3000)
+        if (origin.startsWith(allowed + ':')) return true;
+        return false;
+    });
+}
+
 // Handle WebSocket upgrades for both servers
 function handleUpgrade(request, socket, head) {
     const ip = getClientIP(request);
+    const origin = request.headers.origin;
+
+    // Validate origin to prevent cross-site WebSocket hijacking
+    if (origin && !isOriginAllowed(origin)) {
+        log(`Rejected WebSocket from unauthorized origin: ${origin} (IP: ${ip})`, 'WARN');
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+    }
 
     // Check if IP is banned
     if (isIPBanned(ip)) {
@@ -1293,7 +1327,10 @@ const Pathfinder = {
     },
 
     findPath(startX, startZ, goalX, goalZ) {
-        if (!NavGrid.initialized) return null;
+        if (!NavGrid.initialized) {
+            log('Pathfinder: NavGrid not initialized', 'DEBUG');
+            return null;
+        }
 
         const startGX = NavGrid.worldToGridX(startX);
         const startGZ = NavGrid.worldToGridZ(startZ);
@@ -1304,13 +1341,19 @@ const Pathfinder = {
         if (!NavGrid.isWalkable(startGX, startGZ)) {
             // Find nearest walkable cell to start
             const nearest = this.findNearestWalkable(startGX, startGZ);
-            if (!nearest) return null;
+            if (!nearest) {
+                log('Pathfinder: No walkable cell near start', 'DEBUG');
+                return null;
+            }
         }
 
         if (!NavGrid.isWalkable(goalGX, goalGZ)) {
             // Find nearest walkable cell to goal
             const nearest = this.findNearestWalkable(goalGX, goalGZ);
-            if (!nearest) return null;
+            if (!nearest) {
+                log('Pathfinder: No walkable cell near goal', 'DEBUG');
+                return null;
+            }
         }
 
         // A* implementation with MinHeap for O(log n) operations
@@ -1386,7 +1429,13 @@ const Pathfinder = {
             }
         }
 
-        return null; // No path found
+        // Log path failure reason
+        if (iterations >= maxIterations) {
+            log('Pathfinder: Max iterations reached (path too complex)', 'DEBUG');
+        } else {
+            log('Pathfinder: No valid path exists', 'DEBUG');
+        }
+        return null;
     },
 
     heuristic(x1, z1, x2, z2) {
@@ -1967,6 +2016,73 @@ function spawnZombie() {
     });
 }
 
+// Room-specific zombie spawning
+function spawnZombieInRoom(room) {
+    if (!room || !room.isRunning) return;
+
+    const currentWave = room.wave || 1;
+    const maxZombies = getMaxZombiesForWave(currentWave);
+    const aliveZombies = Array.from(room.zombies.values()).filter(z => z.isAlive);
+    if (aliveZombies.length >= maxZombies) {
+        log(`Max zombies alive (${maxZombies} for wave ${currentWave}) in room ${room.id}, waiting...`, 'WARN');
+        return;
+    }
+
+    const id = `zombie_${++room.lastZombieId}`;
+    const side = Math.floor(Math.random() * 4);
+    const arenaEdge = CONFIG.arena.width / 2 - 2;
+    let position = { x: 0, y: 0, z: 0 };
+
+    switch (side) {
+        case 0: position = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.8, y: 0, z: -arenaEdge }; break;
+        case 1: position = { x: (Math.random() - 0.5) * CONFIG.arena.width * 0.8, y: 0, z: arenaEdge }; break;
+        case 2: position = { x: -arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
+        case 3: position = { x: arenaEdge, y: 0, z: (Math.random() - 0.5) * CONFIG.arena.depth * 0.8 }; break;
+    }
+
+    // Check if this is a boss wave using GameCore
+    const isBossWave = GameCore.WaveSystem.isBossWave(room.wave);
+
+    let zombieType, props;
+
+    if (isBossWave) {
+        // Boss wave - spawn boss with special properties (synced with client)
+        zombieType = 'boss';
+        const bossProps = getBossProps(room.wave);
+        props = {
+            health: bossProps.health,
+            maxHealth: bossProps.maxHealth,
+            speed: bossProps.speed,
+            damage: bossProps.damage,
+            scale: bossProps.scale,
+            points: bossProps.points,
+            isBossWaveBoss: true,
+            bossName: bossProps.name,
+            attacks: bossProps.attacks
+        };
+    } else {
+        // Regular wave - determine zombie type based on wave
+        zombieType = getZombieTypeForWave(room.wave);
+
+        // Get base props from GameCore and scale by wave
+        const baseProps = GameCore.WaveSystem.getTypeProps(zombieType);
+        props = GameCore.WaveSystem.scaleByWave(baseProps, room.wave, true);
+    }
+
+    // Use object pool to reduce GC pressure
+    const zombie = ZombiePool.acquire(id, zombieType, position, props);
+
+    room.zombies.set(id, zombie);
+    room.zombiesSpawned++;
+
+    log(`Spawned ${zombieType} zombie ${id} in room ${room.id}`, 'GAME');
+
+    broadcastToRoom(room, {
+        type: 'zombieSpawned',
+        zombie: zombie
+    });
+}
+
 // Spawn minion for boss summon ability (synced with client)
 function spawnMinion(bossPosition) {
     const id = `minion_${++GameState.lastZombieId}`;
@@ -2529,8 +2645,17 @@ function collectPickup(pickupId, playerId) {
 }
 
 // ==================== PLAYER DAMAGE ====================
-function damagePlayer(playerId, damage) {
-    const player = GameState.players.get(playerId);
+function damagePlayer(playerId, damage, room) {
+    // Get room from parameter or fall back to looking it up
+    if (!room) {
+        room = getPlayerRoom(playerId);
+    }
+    if (!room) {
+        log(`damagePlayer: No room found for player ${playerId}`, 'ERROR');
+        return;
+    }
+
+    const player = room.players.get(playerId);
     if (!player || !player.isAlive) return;
 
     player.health -= damage;
@@ -2541,15 +2666,15 @@ function damagePlayer(playerId, damage) {
         player.isAlive = false;
         log(`Player ${playerId} died!`, 'ERROR');
 
-        broadcast({
+        broadcastToRoom(room, {
             type: 'playerDied',
             playerId: playerId
         });
 
-        // Check if all players dead
-        const alivePlayers = Array.from(GameState.players.values()).filter(p => p.isAlive);
+        // Check if all players dead in this room
+        const alivePlayers = Array.from(room.players.values()).filter(p => p.isAlive);
         if (alivePlayers.length === 0) {
-            gameOver();
+            gameOverInRoom(room);
         }
     } else {
         // Send damage update to specific player
@@ -2562,8 +2687,8 @@ function damagePlayer(playerId, damage) {
             }));
         }
 
-        // Broadcast health update to all players (for nametag health bars)
-        broadcast({
+        // Broadcast health update to all players in room (for nametag health bars)
+        broadcastToRoom(room, {
             type: 'playerHealthSync',
             playerId: playerId,
             health: player.health,
@@ -2806,6 +2931,22 @@ function gameOver() {
         totalKills: GameState.totalKills,
         totalScore: GameState.totalScore,
         players: getPlayersData()
+    });
+}
+
+// Room-specific game over
+function gameOverInRoom(room) {
+    if (!room) return;
+    log(`Game Over in room ${room.id}!`, 'ERROR');
+
+    stopGameInRoom(room);
+
+    broadcastToRoom(room, {
+        type: 'gameOver',
+        wave: room.wave,
+        totalKills: room.totalKills,
+        totalScore: room.totalScore,
+        players: getPlayersDataFromRoom(room)
     });
 }
 
@@ -3129,10 +3270,69 @@ function getPlayersDataFromRoom(room) {
 
 function startWaveInRoom(room) {
     if (!room) return;
-    // This will be called by the existing wave system
-    // For now, delegate to the global startWave
-    // In a full refactor, all wave logic would be room-specific
-    startWave();
+
+    // Boss waves spawn just the boss (synced with client WaveSystem.getZombieCount)
+    const isBossWaveForCount = room.wave > 0 && room.wave % 10 === 0;
+    const zombieCount = isBossWaveForCount ? 1 : Math.floor(5 + (room.wave - 1) * 2 + Math.pow(room.wave, 1.3));
+    room.zombiesRemaining = zombieCount;
+    room.zombiesSpawned = 0;
+
+    // Update all player sessions with current wave
+    room.players.forEach((player, playerId) => {
+        const session = getSessionByPlayerId(playerId);
+        if (session) {
+            session.wave = room.wave;
+            session.isInGame = true;
+        }
+    });
+
+    // Check if map needs to change
+    const targetMapId = getMapForWave(room.wave);
+    const mapChanged = targetMapId !== room.currentMapId;
+    if (mapChanged) {
+        room.currentMapId = targetMapId;
+        setServerMap(targetMapId);  // Rebuild pathfinding for new map
+        log(`Map changed to ${targetMapId} for wave ${room.wave} in room ${room.id}`, 'GAME');
+    }
+
+    // Check if this is a boss wave (every 10th wave - synced with client)
+    const isBossWave = room.wave > 0 && room.wave % 10 === 0;
+    if (isBossWave) {
+        room.bossMode = true;
+    }
+
+    log(`Starting Wave ${room.wave} with ${zombieCount} zombies in room ${room.id}`, 'GAME');
+
+    broadcastToRoom(room, {
+        type: 'waveStart',
+        wave: room.wave,
+        zombieCount: zombieCount,
+        mapId: room.currentMapId,
+        mapChanged: mapChanged,
+        bossMode: room.bossMode
+    });
+
+    // Spawn zombies gradually
+    let spawned = 0;
+    // Clear any existing spawn interval first
+    if (room.spawnInterval) {
+        clearInterval(room.spawnInterval);
+    }
+    room.spawnInterval = setInterval(() => {
+        if (!room.isRunning) {
+            clearInterval(room.spawnInterval);
+            room.spawnInterval = null;
+            return;
+        }
+
+        if (spawned < zombieCount) {
+            spawnZombieInRoom(room);
+            spawned++;
+        } else {
+            clearInterval(room.spawnInterval);
+            room.spawnInterval = null;
+        }
+    }, getSpawnInterval(room.wave));
 }
 
 // ==================== WEBSOCKET HANDLING ====================
@@ -3220,6 +3420,7 @@ wss.on('connection', (ws, request) => {
                 return;
             }
             // Skip processing this message but don't disconnect yet
+            log('Rate limit: dropped message from ' + playerId + ' (violation ' + ws._messageViolations + '/3)', 'WARN');
             return;
         }
 
@@ -3390,6 +3591,32 @@ function handleMessage(playerId, message) {
                 const currentWeapon = player.currentWeapon || 'pistol';
                 const weaponConfig = CONFIG.weapons[currentWeapon];
                 if (weaponConfig) {
+                    // SERVER-SIDE HIT VALIDATION
+                    // Verify the zombie exists and is within weapon range
+                    const targetZombie = room.zombies.get(message.hitZombieId);
+                    if (!targetZombie || !targetZombie.isAlive) break;
+
+                    // Calculate distance from player to zombie
+                    const dx = targetZombie.position.x - player.position.x;
+                    const dz = targetZombie.position.z - player.position.z;
+                    const distanceToZombie = Math.sqrt(dx * dx + dz * dz);
+
+                    // Maximum valid hit range per weapon (with 10% tolerance for latency)
+                    const maxRanges = {
+                        pistol: 55,    // ~50 units range
+                        smg: 44,       // ~40 units range
+                        shotgun: 22,   // ~20 units range (short range)
+                        rifle: 110,    // ~100 units range (sniper)
+                        rocket: 66,    // ~60 units range
+                        laser: 55      // ~50 units range
+                    };
+                    const maxRange = maxRanges[currentWeapon] || 55;
+
+                    if (distanceToZombie > maxRange) {
+                        log(`Rejected hit from ${playerId}: zombie ${message.hitZombieId} too far (${distanceToZombie.toFixed(1)} > ${maxRange})`, 'WARN');
+                        break;
+                    }
+
                     let damage = weaponConfig.damage;
                     const isHeadshot = !!message.isHeadshot;
 
@@ -3562,8 +3789,9 @@ function getRelevantZombies(playerPosition, playerId) {
 const BinaryProtocol = {
     // Encode sync message to binary from zombie array (for interest management)
     encodeSyncFromArray(zombieArray, gameState) {
-        // Calculate buffer size: header(5) + gameState(16) + zombies(20 each)
-        const bufferSize = 5 + 16 + (zombieArray.length * 20);
+        // Calculate buffer size: header(5) + gameState(16) + zombies(22 each)
+        // Changed from 20 to 22 bytes per zombie: UInt32 for ID instead of UInt16
+        const bufferSize = 5 + 16 + (zombieArray.length * 22);
         const buffer = Buffer.alloc(bufferSize);
         let offset = 0;
 
@@ -3579,11 +3807,12 @@ const BinaryProtocol = {
         buffer.writeUInt32LE(gameState.totalScore || 0, offset); offset += 4;
         buffer.writeUInt32LE(0, offset); offset += 4; // reserved
 
-        // Zombies: each 20 bytes
+        // Zombies: each 22 bytes (was 20, added 2 for UInt32 ID)
         zombieArray.forEach((zombie) => {
             // Extract numeric ID from zombie.id (e.g., "zombie_5" -> 5)
+            // Using UInt32 to prevent overflow after 65535 zombies
             const idNum = parseInt(zombie.id?.split('_')[1] || '0', 10);
-            buffer.writeUInt16LE(idNum, offset); offset += 2;
+            buffer.writeUInt32LE(idNum, offset); offset += 4;
             // Type encoded (1 byte): 0=normal, 1=runner, 2=tank, 3=boss
             const typeCode = { normal: 0, runner: 1, crawler: 2, tank: 3, spitter: 4, exploder: 5, minion: 6, boss: 7 }[zombie.type] || 0;
             buffer.writeUInt8(typeCode, offset); offset += 1;

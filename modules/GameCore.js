@@ -352,6 +352,7 @@
         // Calculate leap progress (0 to 1)
         calculateLeapProgress: function(startTime, now) {
             const leap = GameCore.Constants.ABILITIES.runner.leap;
+            if (leap.duration <= 0) return 1; // Guard against division by zero
             return Math.min(1, (now - startTime) / leap.duration);
         },
 
@@ -390,7 +391,8 @@
         // Calculate charge progress (0 to 1)
         calculateChargeProgress: function(startTime, now) {
             const charge = GameCore.Constants.ABILITIES.tank.charge;
-            return (now - startTime) / charge.duration;
+            if (charge.duration <= 0) return 1; // Guard against division by zero
+            return Math.min(1, (now - startTime) / charge.duration);
         },
 
         // Get charge speed (base speed * multiplier)
@@ -518,8 +520,10 @@
         // Calculate exploder explosion damage based on distance
         calculateExploderDamage: function(distance) {
             const C = GameCore.Constants.EXPLODER;
-            if (distance >= C.EXPLOSION_RADIUS) return 0;
-            return Math.floor(C.EXPLOSION_DAMAGE * (1 - distance / C.EXPLOSION_RADIUS));
+            // Clamp distance to valid range to prevent negative values causing overflow
+            const clampedDistance = Math.max(0, Math.min(distance, C.EXPLOSION_RADIUS));
+            if (clampedDistance >= C.EXPLOSION_RADIUS) return 0;
+            return Math.floor(C.EXPLOSION_DAMAGE * (1 - clampedDistance / C.EXPLOSION_RADIUS));
         },
 
         // Get explosion radius

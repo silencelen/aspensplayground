@@ -552,7 +552,10 @@ const GameState = {
     totalKills: 0,
     totalScore: 0,
     spawnTimer: null,
-    lastZombieId: 0
+    lastZombieId: 0,
+    // Map loading state to prevent zombie spawn race conditions
+    isMapLoading: false,
+    pendingZombieSpawns: []
 };
 
 // Note: GameStats loaded from modules/utils.js
@@ -2561,9 +2564,14 @@ function initNetworkStatus() {
 // FPS Counter
 let fpsFrames = 0;
 let fpsLastTime = performance.now();
+let fpsIntervalId = null;
 
 function initFPSCounter() {
-    setInterval(() => {
+    // Clear any existing interval to prevent leaks
+    if (fpsIntervalId) {
+        clearInterval(fpsIntervalId);
+    }
+    fpsIntervalId = setInterval(() => {
         const now = performance.now();
         const fps = Math.round(fpsFrames * 1000 / (now - fpsLastTime));
         const fpsDisplay = document.getElementById('fps-display');
@@ -2573,6 +2581,13 @@ function initFPSCounter() {
         fpsFrames = 0;
         fpsLastTime = now;
     }, 500);
+}
+
+function cleanupFPSCounter() {
+    if (fpsIntervalId) {
+        clearInterval(fpsIntervalId);
+        fpsIntervalId = null;
+    }
 }
 
 function initSettingsMenu() {
@@ -2752,6 +2767,10 @@ function warmAudioSystem() {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.001);
+        oscillator.onended = () => {
+            try { oscillator.disconnect(); gainNode.disconnect(); }
+            catch (e) { /* Already disconnected */ }
+        };
 
         // Also pre-warm the panner node path
         const panner = audioContext.createPanner();
@@ -2763,6 +2782,10 @@ function warmAudioSystem() {
         panner.connect(audioContext.destination);
         silentOsc.start(audioContext.currentTime);
         silentOsc.stop(audioContext.currentTime + 0.001);
+        silentOsc.onended = () => {
+            try { silentOsc.disconnect(); silentGain.disconnect(); panner.disconnect(); }
+            catch (e) { /* Already disconnected */ }
+        };
 
         DebugLog.log('Audio system warmed up', 'success');
     } catch (e) {
@@ -2899,6 +2922,8 @@ function startCreepyDrone() {
         droneOscillator.osc2 = osc2;
         droneOscillator.osc3 = osc3;
         droneOscillator.lfo = lfo;
+        droneOscillator.lfoGain = lfoGain;
+        droneOscillator.filter = filter;
     } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
@@ -2909,6 +2934,13 @@ function stopCreepyDrone() {
             droneOscillator.osc2?.stop();
             droneOscillator.osc3?.stop();
             droneOscillator.lfo?.stop();
+            // Disconnect nodes to prevent memory leaks
+            droneOscillator.disconnect();
+            droneOscillator.osc2?.disconnect();
+            droneOscillator.osc3?.disconnect();
+            droneOscillator.lfo?.disconnect();
+            droneOscillator.lfoGain?.disconnect();
+            droneOscillator.filter?.disconnect();
         } catch (e) { /* Audio error - silently ignore for user experience */ }
         droneOscillator = null;
         droneGain = null;
@@ -3316,6 +3348,12 @@ function playZombieDeathSound(position) {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.4);
+
+        // Clean up audio nodes when oscillator ends to prevent memory leaks
+        oscillator.onended = () => {
+            try { oscillator.disconnect(); gainNode.disconnect(); panner.disconnect(); }
+            catch (e) { /* Already disconnected */ }
+        };
     } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
@@ -3423,6 +3461,55 @@ const particlePool = {
             sparks: this.sparks.length,
             active: activeParticles.length
         };
+    },
+
+    // Dispose all pooled particles and their materials
+    dispose() {
+        // Dispose blood particles
+        this.blood.forEach(p => {
+            if (p.mesh) {
+                if (p.mesh.material) p.mesh.material.dispose();
+                if (p.mesh.geometry && p.mesh.geometry !== cachedGeometries.bloodSphere) {
+                    p.mesh.geometry.dispose();
+                }
+            }
+        });
+        this.blood.length = 0;
+
+        // Dispose shell casings
+        this.shells.forEach(p => {
+            if (p.mesh) {
+                if (p.mesh.material) p.mesh.material.dispose();
+            }
+        });
+        this.shells.length = 0;
+
+        // Dispose debris
+        this.debris.forEach(p => {
+            if (p.mesh) {
+                if (p.mesh.material) p.mesh.material.dispose();
+                if (p.mesh.geometry) p.mesh.geometry.dispose();
+            }
+        });
+        this.debris.length = 0;
+
+        // Dispose muzzle flash components
+        this.flash.forEach(f => {
+            if (f.core && f.core.material) f.core.material.dispose();
+            if (f.glow && f.glow.material) f.glow.material.dispose();
+        });
+        this.flash.length = 0;
+
+        // Dispose sparks
+        this.sparks.forEach(s => {
+            if (s.material) s.material.dispose();
+        });
+        this.sparks.length = 0;
+
+        // Also clear active particles array
+        activeParticles.length = 0;
+
+        DebugLog.log('Particle pool disposed', 'info');
     }
 };
 
@@ -3832,7 +3919,8 @@ function decodeBinarySync(view) {
 
     // Decode zombies
     for (let i = 0; i < zombieCount; i++) {
-        const idx = view.getUint16(offset, true); offset += 2;
+        // Using UInt32 for zombie ID to prevent overflow after 65535 zombies
+        const idx = view.getUint32(offset, true); offset += 4;
         const typeCode = view.getUint8(offset); offset += 1;
         const isAlive = view.getUint8(offset) === 1; offset += 1;
         const x = view.getFloat32(offset, true); offset += 4;
@@ -4428,6 +4516,13 @@ function handlePlayerHealthSync(message) {
 }
 
 function handleZombieSpawned(zombieData) {
+    // Buffer zombie spawns during map loading to prevent collision data race
+    if (GameState.isMapLoading) {
+        GameState.pendingZombieSpawns.push(zombieData);
+        DebugLog.log(`Zombie ${zombieData.id} queued (map loading)`, 'game');
+        return;
+    }
+
     DebugLog.log(`Zombie spawned: ${zombieData.id} (${zombieData.type})`, 'game');
 
     // Use object pooling for better performance
@@ -4445,6 +4540,16 @@ function handleZombieSpawned(zombieData) {
 
     // Add to spatial grid for optimized collision detection
     SpatialGrid.insert(zombieEntry);
+}
+
+// Process any zombie spawns that were buffered during map loading
+function processPendingZombieSpawns() {
+    if (GameState.pendingZombieSpawns.length > 0) {
+        DebugLog.log(`Processing ${GameState.pendingZombieSpawns.length} queued zombie spawns`, 'game');
+        const pending = GameState.pendingZombieSpawns;
+        GameState.pendingZombieSpawns = [];
+        pending.forEach(zombieData => handleZombieSpawned(zombieData));
+    }
 }
 
 function handleZombieDamaged(message) {
@@ -4749,6 +4854,10 @@ async function handleWaveStart(message) {
     // Handle map changes from server (multiplayer)
     if (typeof MapManager !== 'undefined' && MapManager.currentMap && message.mapChanged) {
         DebugLog.log(`Server: Map changing to ${message.mapId}`, 'game');
+
+        // Set map loading flag to buffer zombie spawns during transition
+        GameState.isMapLoading = true;
+
         try {
             const mapLoaded = await MapManager.loadMap(message.mapId);
 
@@ -4759,6 +4868,10 @@ async function handleWaveStart(message) {
             }
         } catch (err) {
             DebugLog.log(`Failed to load map ${message.mapId}: ${err.message}`, 'error');
+        } finally {
+            // Clear map loading flag and process any buffered zombie spawns
+            GameState.isMapLoading = false;
+            processPendingZombieSpawns();
         }
     }
 
@@ -5621,7 +5734,8 @@ function updateZombieHealthBar(zombie) {
     const healthFill = healthBar.getObjectByName('healthFill');
     if (!healthFill) return;
 
-    const healthPercent = zombie.health / zombie.maxHealth;
+    // Clamp health percent to valid range to prevent negative values
+    const healthPercent = Math.max(0, Math.min(1, zombie.health / zombie.maxHealth));
 
     // Show health bar only when damaged
     healthBar.visible = healthPercent < 1 && zombie.isAlive;
@@ -10534,16 +10648,18 @@ function countAliveZombies() {
 }
 
 function updateHUD() {
-    setElementStyle('health-bar', 'width', `${playerState.health}%`);
+    // Clamp health to valid range to prevent negative widths
+    const clampedHealth = Math.max(0, Math.min(100, playerState.health));
+    setElementStyle('health-bar', 'width', `${clampedHealth}%`);
 
     // Update mobile health bar too
     const mobileHealthBar = document.getElementById('mobile-health-bar');
     if (mobileHealthBar) {
-        mobileHealthBar.style.width = `${playerState.health}%`;
+        mobileHealthBar.style.width = `${clampedHealth}%`;
         // Change color based on health
-        if (playerState.health <= 25) {
+        if (clampedHealth <= 25) {
             mobileHealthBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';
-        } else if (playerState.health <= 50) {
+        } else if (clampedHealth <= 50) {
             mobileHealthBar.style.background = 'linear-gradient(90deg, #8b4500, #ff8c00)';
         } else {
             mobileHealthBar.style.background = 'linear-gradient(90deg, #006400, #00ff00)';
@@ -11022,7 +11138,7 @@ function showWaveAnnouncement(waveNum, isBossWave = false) {
     setTimeout(() => {
         announcement.remove();
         style.remove();
-    }, 2000);
+    }, duration);
 }
 
 function togglePause() {
@@ -11206,6 +11322,15 @@ function playSound(type, position = null) {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.5);
+
+        // Clean up audio nodes when oscillator ends to prevent memory leaks
+        oscillator.onended = () => {
+            try {
+                oscillator.disconnect();
+                gainNode.disconnect();
+                masterGain.disconnect();
+            } catch (e) { /* Already disconnected - ignore */ }
+        };
     } catch (e) { /* Audio error - silently ignore for user experience */ }
 }
 
@@ -11766,6 +11891,9 @@ function resetSinglePlayerGame() {
     // Clear optimization systems
     ZombiePool.clear();
     SpatialGrid.clear();
+
+    // Dispose particle pool materials
+    particlePool.dispose();
 
     // Clear pickups
     pickups.forEach((pickup) => {
@@ -13775,13 +13903,13 @@ function showDamageEffect() {
 // ==================== EVENT LISTENERS ====================
 function initEventListeners() {
     // Single Player button
-    document.getElementById('singleplayer-button').addEventListener('click', () => {
+    document.getElementById('singleplayer-button')?.addEventListener('click', () => {
         GameState.mode = 'singleplayer';
         startSinglePlayerGame();
     });
 
     // Multiplayer button - go to lobby
-    document.getElementById('multiplayer-button').addEventListener('click', () => {
+    document.getElementById('multiplayer-button')?.addEventListener('click', () => {
         GameState.mode = 'multiplayer';
         setElementDisplay('start-screen', 'none');
         setElementDisplay('lobby-screen', 'flex');
@@ -13789,7 +13917,7 @@ function initEventListeners() {
     });
 
     // Ready button in lobby
-    document.getElementById('ready-button').addEventListener('click', () => {
+    document.getElementById('ready-button')?.addEventListener('click', () => {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             DebugLog.log('Cannot ready: not connected to server', 'error');
             return;
@@ -13808,12 +13936,12 @@ function initEventListeners() {
     });
 
     // Leave lobby button
-    document.getElementById('leave-lobby-button').addEventListener('click', () => {
+    document.getElementById('leave-lobby-button')?.addEventListener('click', () => {
         leaveLobby();
     });
 
     // Restart button
-    document.getElementById('restart-button').addEventListener('click', () => {
+    document.getElementById('restart-button')?.addEventListener('click', () => {
         if (GameState.mode === 'singleplayer') {
             resetSinglePlayerGame();
             startSinglePlayerGame();
@@ -13823,12 +13951,12 @@ function initEventListeners() {
         setElementDisplay('game-over-screen', 'none');
     });
 
-    document.getElementById('resume-button').addEventListener('click', () => {
+    document.getElementById('resume-button')?.addEventListener('click', () => {
         togglePause();
         document.body.requestPointerLock();
     });
 
-    document.getElementById('quit-button').addEventListener('click', () => {
+    document.getElementById('quit-button')?.addEventListener('click', () => {
         quitToMenu();
     });
 
@@ -13843,26 +13971,28 @@ function initEventListeners() {
     });
 
     // Leaderboard toggle on main menu
-    document.getElementById('menu-leaderboard-toggle').addEventListener('click', async () => {
+    document.getElementById('menu-leaderboard-toggle')?.addEventListener('click', async () => {
         const leaderboard = document.getElementById('menu-leaderboard');
         const controls = document.getElementById('controls-info');
         const toggle = document.getElementById('menu-leaderboard-toggle');
+
+        if (!leaderboard || !toggle) return;
 
         if (leaderboard.style.display === 'none') {
             await fetchLeaderboard();
             renderLeaderboard('menu-leaderboard-content');
             leaderboard.style.display = 'block';
-            controls.style.display = 'none';
+            if (controls) controls.style.display = 'none';
             toggle.textContent = 'HIDE LEADERBOARD';
         } else {
             leaderboard.style.display = 'none';
-            controls.style.display = 'block';
+            if (controls) controls.style.display = 'block';
             toggle.textContent = 'VIEW LEADERBOARD';
         }
     });
 
     // Main menu button on game over screen
-    document.getElementById('menu-button').addEventListener('click', () => {
+    document.getElementById('menu-button')?.addEventListener('click', () => {
         setElementDisplay('game-over-screen', 'none');
         quitToMenu();
     });
@@ -13992,6 +14122,9 @@ async function quitToMenu() {
     // Clean up event listeners
     cleanupControls();
 
+    // Clean up FPS counter interval
+    cleanupFPSCounter();
+
     // Clear all zombies
     zombies.forEach((zombie) => {
         if (zombie.mesh) scene.remove(zombie.mesh);
@@ -14002,6 +14135,7 @@ async function quitToMenu() {
     // Clear optimization systems
     ZombiePool.clear();
     SpatialGrid.clear();
+    particlePool.dispose();
 
     // Clear pickups
     pickups.forEach((pickup) => {
@@ -14101,11 +14235,13 @@ function leaveLobby() {
     setElementDisplay('lobby-screen', 'none');
     setElementDisplay('start-screen', 'flex');
 
-    // Reset ready button
+    // Reset ready button (with null check to prevent crash)
     const btn = document.getElementById('ready-button');
-    btn.textContent = 'READY';
-    btn.classList.remove('ready');
-    btn.disabled = true;
+    if (btn) {
+        btn.textContent = 'READY';
+        btn.classList.remove('ready');
+        btn.disabled = true;
+    }
 }
 
 // ==================== AGE GATE ====================

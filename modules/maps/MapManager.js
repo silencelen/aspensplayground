@@ -46,9 +46,13 @@ const MapManager = {
         return 'party_room';
     },
 
-    // Check if wave is a boss wave (every 5th wave after wave 5)
+    // Check if wave is a boss wave (every 10th wave)
+    // Uses GameCore if available, otherwise uses constant 10
     isBossWave(wave) {
-        return wave >= 5 && wave % 5 === 0;
+        const interval = (typeof GameCore !== 'undefined' && GameCore.Constants && GameCore.Constants.BOSS)
+            ? GameCore.Constants.BOSS.WAVE_INTERVAL
+            : 10;
+        return wave > 0 && wave % interval === 0;
     },
 
     // Load a map by ID

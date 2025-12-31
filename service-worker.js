@@ -1,6 +1,6 @@
 // Service Worker for Aspen's Playground PWA
 // Update this version when deploying significant changes
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const CACHE_NAME = `aspens-playground-v${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -10,6 +10,7 @@ const ASSETS_TO_CACHE = [
     '/index.html',
     '/game.js',
     '/modules/GameCore.js',
+    '/modules/utils.js',
     '/manifest.json',
     '/privacy.html',
     '/terms.html',
@@ -73,6 +74,9 @@ self.addEventListener('activate', (event) => {
             })
             .then(() => {
                 return self.clients.claim();
+            })
+            .catch((error) => {
+                console.error('[ServiceWorker] Activation failed:', error);
             })
     );
 });
