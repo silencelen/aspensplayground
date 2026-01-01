@@ -1832,6 +1832,7 @@ const killStreak = {
 // Player state
 const playerState = {
     health: CONFIG.player.maxHealth,
+    stamina: CONFIG.player.maxStamina,
     isAlive: true,
     position: new THREE.Vector3(0, CONFIG.player.height, 0),
     rotation: new THREE.Euler(0, 0, 0, 'YXZ'),
@@ -5075,6 +5076,7 @@ function handleGameStart(message) {
     GameState.isPaused = false;  // Ensure not stuck in paused state
     playerState.isAlive = true;
     playerState.health = CONFIG.player.maxHealth;
+    playerState.stamina = CONFIG.player.maxStamina;
     playerState.kills = 0;
     playerState.score = 0;
     weapon.ammo = CONFIG.player.startAmmo;
@@ -11658,8 +11660,24 @@ function updatePlayer(delta) {
 
     moveDirection.applyAxisAngle(Vec3.UP, player.rotation.y);
 
-    // Sprint - no stamina limit
-    const speed = CONFIG.player.speed * (keys.sprint ? CONFIG.player.sprintMultiplier : 1);
+    // Sprint with stamina system
+    let canSprint = keys.sprint && playerState.stamina > 0 && moveDirection.length() > 0;
+    const isSprinting = canSprint;
+    
+    // Drain stamina while sprinting, regenerate while not
+    if (isSprinting) {
+        playerState.stamina = Math.max(0, playerState.stamina - CONFIG.player.staminaDrain * delta);
+    } else {
+        playerState.stamina = Math.min(CONFIG.player.maxStamina, playerState.stamina + CONFIG.player.staminaRegen * delta);
+    }
+    
+    // Update stamina bar UI
+    const staminaBar = document.getElementById('stamina-fill');
+    if (staminaBar) {
+        staminaBar.style.width = (playerState.stamina / CONFIG.player.maxStamina * 100) + '%';
+    }
+    
+    const speed = CONFIG.player.speed * (isSprinting ? CONFIG.player.sprintMultiplier : 1);
     const moveX = moveDirection.x * speed * delta;
     const moveZ = moveDirection.z * speed * delta;
 
@@ -12018,6 +12036,7 @@ function startSinglePlayerGame() {
     // Reset player
     player.position.set(0, CONFIG.player.height, 0);
     playerState.health = CONFIG.player.maxHealth;
+    playerState.stamina = CONFIG.player.maxStamina;
     playerState.isAlive = true;
     playerState.kills = 0;
     playerState.score = 0;
@@ -14459,6 +14478,7 @@ async function quitToMenu() {
 
     // Reset player state
     playerState.health = CONFIG.player.maxHealth;
+    playerState.stamina = CONFIG.player.maxStamina;
     playerState.isAlive = true;
     playerState.score = 0;
     playerState.ammo = CONFIG.player.startAmmo;

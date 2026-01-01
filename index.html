@@ -467,6 +467,23 @@
             box-shadow: 0 0 15px #ff0000 inset;
         }
 
+        #stamina-bar-container {
+            width: 200px;
+            height: 12px;
+            background: #333;
+            border: 2px solid #0066aa;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 3px;
+        }
+
+        #stamina-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0066aa, #00aaff);
+            transition: width 0.1s ease;
+            box-shadow: 0 0 10px #00aaff inset;
+        }
+
         #center-hud {
             text-align: center;
         }
@@ -2626,6 +2643,10 @@
             <div class="hud-label" id="health-label">HEALTH</div>
             <div id="health-bar-container" role="progressbar" aria-labelledby="health-label" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
                 <div id="health-bar" style="width: 100%"></div>
+            </div>
+            <div class="hud-label" style="margin-top: 5px">STAMINA</div>
+            <div id="stamina-bar-container" role="progressbar" aria-label="Stamina" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
+                <div id="stamina-fill" style="width: 100%"></div>
             </div>
         </div>
         <div class="hud-panel" id="weapon-panel">

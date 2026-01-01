@@ -18,7 +18,10 @@ const CONFIG = {
         reserveAmmo: 90,
         reloadTime: 2000,
         fireRate: 100,
-        damage: 25
+        damage: 25,
+        maxStamina: 100,
+        staminaDrain: 25,    // Stamina lost per second while sprinting
+        staminaRegen: 15     // Stamina regained per second while not sprinting
     },
     zombie: {
         attackRange: 2
