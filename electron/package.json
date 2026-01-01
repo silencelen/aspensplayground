@@ -105,7 +105,7 @@
           "arch": ["x64", "arm64"]
         }
       ],
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.icns",
       "category": "public.app-category.games",
       "artifactName": "${productName}-${version}-Mac-${arch}.${ext}"
     },

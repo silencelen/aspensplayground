@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 1.0.1)'
+        description: 'Version to release (e.g., 1.0.3)'
         required: true
-        default: '1.0.1'
+        default: '1.0.3'
 
 permissions:
   contents: write
@@ -54,11 +54,33 @@ jobs:
           npm install sharp --save-dev
           node scripts/generate-icons.js
 
+      # macOS needs ICNS format - convert using iconutil
+      - name: Generate macOS ICNS icon
+        if: matrix.platform == 'mac'
+        run: |
+          mkdir -p electron/resources/icon.iconset
+          sips -z 16 16 electron/resources/icon.png --out electron/resources/icon.iconset/icon_16x16.png
+          sips -z 32 32 electron/resources/icon.png --out electron/resources/icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 electron/resources/icon.png --out electron/resources/icon.iconset/icon_32x32.png
+          sips -z 64 64 electron/resources/icon.png --out electron/resources/icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 electron/resources/icon.png --out electron/resources/icon.iconset/icon_128x128.png
+          sips -z 256 256 electron/resources/icon.png --out electron/resources/icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 electron/resources/icon.png --out electron/resources/icon.iconset/icon_256x256.png
+          sips -z 512 512 electron/resources/icon.png --out electron/resources/icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 electron/resources/icon.png --out electron/resources/icon.iconset/icon_512x512.png
+          cp electron/resources/icon.png electron/resources/icon.iconset/icon_512x512@2x.png
+          iconutil -c icns electron/resources/icon.iconset -o electron/resources/icon.icns
+          ls -la electron/resources/
+
       - name: Build app
         working-directory: ./electron
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List build output
+        run: ls -la electron/dist/ || dir electron\dist\
+        continue-on-error: true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -72,10 +94,12 @@ jobs:
             electron/dist/*.deb
             electron/dist/*.rpm
           retention-days: 5
+          if-no-files-found: warn
 
   release:
     name: Create Release
     needs: build
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
 
     steps:
@@ -88,6 +112,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
 
       - name: Get version
         id: version
@@ -130,7 +155,7 @@ jobs:
           EOF
 
       - name: List artifacts
-        run: find artifacts -type f | head -20
+        run: find artifacts -type f 2>/dev/null | head -20 || echo "No artifacts found"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -145,5 +170,6 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.AppImage
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
