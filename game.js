@@ -10,6 +10,16 @@ const DevSettings = {
     infiniteAmmo: false  // When true, ammo and grenades are not consumed
 };
 
+// ==================== API BASE URL ====================
+// Helper to get correct API URL for both browser and Electron
+function getApiBaseUrl() {
+    const isElectron = window.location.protocol === 'file:' ||
+                       !window.location.host ||
+                       navigator.userAgent.toLowerCase().includes('electron');
+    return isElectron ? 'https://aspensplayground.com' : '';
+}
+
+
 // ==================== STATIC VECTOR3 CONSTANTS ====================
 // Reusable Vector3 objects to reduce garbage collection pressure
 const Vec3 = {
@@ -1839,7 +1849,7 @@ async function fetchLeaderboard() {
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
     try {
-        const response = await fetch('/api/leaderboard', { signal: controller.signal });
+        const response = await fetch(getApiBaseUrl() + '/api/leaderboard', { signal: controller.signal });
         clearTimeout(timeoutId);
         if (response.ok) {
             const data = await response.json();
@@ -1871,7 +1881,7 @@ async function submitScore(name) {
 
         if (sessionToken) {
             // Multiplayer: use session-based submission (server-verified scores)
-            response = await fetch('/api/leaderboard', {
+            response = await fetch(getApiBaseUrl() + '/api/leaderboard', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, sessionToken }),
@@ -1879,7 +1889,7 @@ async function submitScore(name) {
             });
         } else {
             // Singleplayer: submit score directly (client-side tracking)
-            response = await fetch('/api/leaderboard/singleplayer', {
+            response = await fetch(getApiBaseUrl() + '/api/leaderboard/singleplayer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
