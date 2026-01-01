@@ -5033,6 +5033,11 @@ function handleWaveComplete(message) {
 function handleGameStart(message) {
     DebugLog.log('Game starting!', 'game');
 
+    // Exit spectator mode if we were spectating
+    if (SpectatorMode.isSpectating) {
+        SpectatorMode.exit();
+    }
+
     // Re-initialize controls (may have been cleaned up on previous quit)
     initControls();
 
@@ -5060,6 +5065,7 @@ function handleGameStart(message) {
     GameState.isInLobby = false;
     GameState.isRunning = true;
     GameState.isGameOver = false;
+    GameState.isPaused = false;  // Ensure not stuck in paused state
     playerState.isAlive = true;
     playerState.health = CONFIG.player.maxHealth;
     playerState.kills = 0;
@@ -11992,6 +11998,7 @@ function startSinglePlayerGame() {
     // Reset game state
     GameState.isRunning = true;
     GameState.isGameOver = false;
+    GameState.isPaused = false;  // Ensure not stuck in paused state
     GameState.wave = 1;
     GameState.zombiesRemaining = 0;
     GameState.zombiesSpawned = 0;

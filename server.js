@@ -2131,9 +2131,14 @@ function spawnZombieInRoom(room) {
 }
 
 // Spawn minion for boss summon ability (synced with client)
-function spawnMinion(bossPosition) {
-    const id = `minion_${++GameState.lastZombieId}`;
-    
+function spawnMinion(room, bossPosition) {
+    if (!room) {
+        log('spawnMinion: No room provided', 'ERROR');
+        return;
+    }
+
+    const id = `minion_${++room.lastZombieId}`;
+
     // Spawn around the boss
     const angle = Math.random() * Math.PI * 2;
     const dist = 2 + Math.random() * 3;
@@ -2142,19 +2147,19 @@ function spawnMinion(bossPosition) {
         y: 0,
         z: bossPosition.z + Math.sin(angle) * dist
     };
-    
+
     // Get minion properties from GameCore
     const props = GameCore.WaveSystem.getTypeProps('minion');
-    
+
     const zombie = ZombiePool.acquire(id, 'minion', position, props);
     zombie.isMinion = true;
-    
-    GameState.zombies.set(id, zombie);
+
+    room.zombies.set(id, zombie);
     // Minions don't count toward zombiesSpawned/remaining
-    
-    log(`Boss summoned minion ${id}`, 'GAME');
-    
-    broadcast({
+
+    log(`Boss summoned minion ${id} in room ${room.id}`, 'GAME');
+
+    broadcastToRoom(room, {
         type: 'zombieSpawned',
         zombie: zombie
     });
@@ -2312,10 +2317,15 @@ function updateZombies(room = null) {
             if (bossState.phase >= 2 && now - bossState.lastSummon > bossState.attacks.summon.cooldown * cooldownMult) {
                 bossState.lastSummon = now;
                 const minionCount = bossState.attacks.summon.count;
+                const targetRoom = room || GameState;  // Fall back for legacy
                 for (let i = 0; i < minionCount; i++) {
-                    spawnMinion(zombie.position);
+                    spawnMinion(targetRoom, zombie.position);
                 }
-                broadcast({ type: 'bossSummon', zombieId: zombie.id, count: minionCount });
+                if (room) {
+                    broadcastToRoom(room, { type: 'bossSummon', zombieId: zombie.id, count: minionCount });
+                } else {
+                    broadcast({ type: 'bossSummon', zombieId: zombie.id, count: minionCount });
+                }
             }
         }
         
