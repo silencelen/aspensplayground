@@ -4051,6 +4051,10 @@ function handleServerMessage(message) {
             handleZombieAttack(message);
             break;
 
+        case 'spitterAttack':
+            handleSpitterAttack(message);
+            break;
+
         case 'pickupSpawned':
             handlePickupSpawned(message.pickup);
             break;
@@ -4610,6 +4614,74 @@ function handleZombieAttack(message) {
             playSound('zombieAttack');
         }
     }
+}
+
+function handleSpitterAttack(message) {
+    const zombie = zombies.get(message.zombieId);
+    if (!zombie || !zombie.mesh) return;
+
+    // Get target position - either local player or remote player
+    let targetPos;
+    if (message.targetId === localPlayerId) {
+        targetPos = { x: player.position.x, y: player.position.y + 1, z: player.position.z };
+    } else {
+        const remotePlayer = remotePlayers.get(message.targetId);
+        if (remotePlayer && remotePlayer.mesh) {
+            targetPos = {
+                x: remotePlayer.mesh.position.x,
+                y: remotePlayer.mesh.position.y + 1,
+                z: remotePlayer.mesh.position.z
+            };
+        } else {
+            return; // Can't find target
+        }
+    }
+
+    // Create acid projectile (similar to singleplayer spawnSpitterProjectile)
+    const projectileGroup = new THREE.Group();
+
+    // Acid ball
+    const ballGeo = new THREE.SphereGeometry(0.15, 8, 8);
+    const ballMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.8
+    });
+    const ball = new THREE.Mesh(ballGeo, ballMat);
+    projectileGroup.add(ball);
+
+    // Glow effect
+    const glowGeo = new THREE.SphereGeometry(0.25, 8, 8);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.3
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    projectileGroup.add(glow);
+
+    projectileGroup.position.set(zombie.position.x, 1.5, zombie.position.z);
+    scene.add(projectileGroup);
+
+    // Direction to target
+    const dx = targetPos.x - zombie.position.x;
+    const dy = targetPos.y - 1.5;
+    const dz = targetPos.z - zombie.position.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    projectiles.push({
+        mesh: projectileGroup,
+        velocity: new THREE.Vector3(dx / dist * 12, dy / dist * 12, dz / dist * 12),
+        damage: message.damage || zombie.damage || 15,
+        splashDamage: 0,
+        splashRadius: 0,
+        type: 'spitter',
+        createdAt: Date.now(),
+        owner: 'enemy'
+    });
+
+    playSound('shoot');
+    DebugLog.log('Spitter ' + message.zombieId + ' launched acid attack', 'game');
 }
 
 function handleZombieAbility(message) {
