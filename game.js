@@ -9451,7 +9451,7 @@ function shoot() {
                     // Use ground reference (0) instead of mesh.position.y which bounces during animation
                     const headHeight = 1.5 * (zombie.scale || 1);
                     const isHeadshot = intersects[0].point.y > headHeight;
-                    const damage = isHeadshot ? stats.damage * 2 : stats.damage;
+                    const damage = isHeadshot ? stats.damage * 1.5 : stats.damage;
 
                     createBloodSplatter(intersects[0].point);
                     showHitMarker(isHeadshot, intersects[0].point);
