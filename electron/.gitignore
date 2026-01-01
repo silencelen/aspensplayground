@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Generated icons (keep source only)
+resources/icon.iconset/
+
+# Lock files (use root package-lock)
+package-lock.json
