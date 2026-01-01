@@ -8733,6 +8733,41 @@ const mobileInput = {
     joystickTouch: null
 };
 
+// ==================== ANIMATION TRACKING ====================
+// Track animation frame IDs for proper cleanup to prevent memory leaks
+let mainAnimationId = null;
+let reloadAnimationId = null;
+const activeAnimations = new Set(); // Track temporary effect animations
+
+function registerAnimation(id) {
+    activeAnimations.add(id);
+    return id;
+}
+
+function unregisterAnimation(id) {
+    activeAnimations.delete(id);
+}
+
+function cleanupAnimations() {
+    // Cancel main game loop
+    if (mainAnimationId) {
+        cancelAnimationFrame(mainAnimationId);
+        mainAnimationId = null;
+    }
+
+    // Cancel reload animation
+    if (reloadAnimationId) {
+        cancelAnimationFrame(reloadAnimationId);
+        reloadAnimationId = null;
+    }
+
+    // Cancel all tracked effect animations
+    activeAnimations.forEach(id => {
+        cancelAnimationFrame(id);
+    });
+    activeAnimations.clear();
+}
+
 // ==================== CONTROLS ====================
 let controlsInitialized = false;
 let mobileAbortController = null;
@@ -8780,6 +8815,9 @@ function cleanupControls() {
         mobileAbortController.abort();
         mobileAbortController = null;
     }
+
+    // Cancel all active animations to prevent memory leaks
+    cleanupAnimations();
 
     // Reset control states
     keys.forward = false;
@@ -9580,8 +9618,9 @@ function reload() {
         }
 
         if (progress < 1) {
-            requestAnimationFrame(animateReload);
+            reloadAnimationId = requestAnimationFrame(animateReload);
         } else {
+            reloadAnimationId = null;
             // Reload complete - reset everything
             weapon.model.rotation.x = weapon.modelOriginalRot.x;
             weapon.model.rotation.z = weapon.modelOriginalRot.z;
@@ -9612,7 +9651,7 @@ function reload() {
         }
     }
 
-    animateReload();
+    reloadAnimationId = requestAnimationFrame(animateReload);
 }
 
 // ==================== SPECIAL WEAPONS ====================
@@ -11470,7 +11509,7 @@ function playSound3D(type, worldPosition) {
 
 // ==================== GAME LOOP ====================
 function animate() {
-    requestAnimationFrame(animate);
+    mainAnimationId = requestAnimationFrame(animate);
 
     deltaTime = clock.getDelta();
 
