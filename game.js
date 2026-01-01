@@ -14065,11 +14065,9 @@ function initEventListeners() {
             await fetchLeaderboard();
             renderLeaderboard('menu-leaderboard-content');
             leaderboard.style.display = 'block';
-            if (controls) controls.style.display = 'none';
             toggle.textContent = 'HIDE LEADERBOARD';
         } else {
             leaderboard.style.display = 'none';
-            if (controls) controls.style.display = 'block';
             toggle.textContent = 'VIEW LEADERBOARD';
         }
     });
@@ -14085,7 +14083,6 @@ function initEventListeners() {
         // Check if click is outside the leaderboard and not on the toggle button
         if (!leaderboard.contains(e.target) && e.target !== toggle) {
             leaderboard.style.display = 'none';
-            if (controls) controls.style.display = 'block';
             if (toggle) toggle.textContent = 'VIEW LEADERBOARD';
         }
     });
