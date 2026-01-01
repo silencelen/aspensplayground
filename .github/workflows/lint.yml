@@ -1,0 +1,114 @@
+# Code quality checks with ESLint
+
+name: Code Quality
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  eslint:
+    name: ESLint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install ESLint
+        run: npm install eslint@latest --save-dev
+
+      - name: Create ESLint config
+        run: |
+          cat > eslint.config.mjs << 'EOF'
+          export default [
+            {
+              files: ["**/*.js"],
+              ignores: ["node_modules/**", "*.min.js"],
+              languageOptions: {
+                ecmaVersion: 2022,
+                sourceType: "script",
+                globals: {
+                  // Browser globals
+                  window: "readonly",
+                  document: "readonly",
+                  console: "readonly",
+                  localStorage: "readonly",
+                  sessionStorage: "readonly",
+                  fetch: "readonly",
+                  WebSocket: "readonly",
+                  AudioContext: "readonly",
+                  requestAnimationFrame: "readonly",
+                  cancelAnimationFrame: "readonly",
+                  setTimeout: "readonly",
+                  setInterval: "readonly",
+                  clearTimeout: "readonly",
+                  clearInterval: "readonly",
+                  navigator: "readonly",
+                  location: "readonly",
+                  history: "readonly",
+                  alert: "readonly",
+                  confirm: "readonly",
+                  performance: "readonly",
+                  Image: "readonly",
+                  Event: "readonly",
+                  CustomEvent: "readonly",
+                  HTMLElement: "readonly",
+                  AbortController: "readonly",
+                  // Node.js globals (for server.js)
+                  require: "readonly",
+                  module: "readonly",
+                  exports: "readonly",
+                  process: "readonly",
+                  __dirname: "readonly",
+                  __filename: "readonly",
+                  Buffer: "readonly",
+                  // Three.js
+                  THREE: "readonly",
+                  // Game globals
+                  GameCore: "readonly",
+                }
+              },
+              rules: {
+                "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+                "no-undef": "error",
+                "no-redeclare": "error",
+                "no-constant-condition": "warn",
+                "no-empty": "warn",
+                "no-unreachable": "error",
+                "no-duplicate-case": "error",
+                "no-fallthrough": "warn",
+                "no-irregular-whitespace": "warn",
+                "no-loss-of-precision": "error",
+                "use-isnan": "error",
+                "valid-typeof": "error",
+              }
+            }
+          ];
+          EOF
+
+      - name: Run ESLint
+        run: npx eslint . --format stylish
+        continue-on-error: true
+
+      - name: Run ESLint (JSON for annotations)
+        run: npx eslint . --format json > eslint-results.json || true
+
+      - name: Upload ESLint results
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-results
+          path: eslint-results.json
+          retention-days: 30

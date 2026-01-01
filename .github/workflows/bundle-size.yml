@@ -1,0 +1,97 @@
+# Bundle size tracking
+
+name: Bundle Size
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  bundle-size:
+    name: Check Bundle Size
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Calculate file sizes
+        id: sizes
+        run: |
+          echo "## Bundle Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size | Gzipped |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|---------|" >> $GITHUB_STEP_SUMMARY
+
+          # Key files to track
+          FILES="game.js server.js index.html service-worker.js"
+
+          TOTAL_SIZE=0
+          TOTAL_GZIP=0
+
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              SIZE=$(wc -c < "$file")
+              GZIP=$(gzip -c "$file" | wc -c)
+              SIZE_KB=$(echo "scale=1; $SIZE / 1024" | bc)
+              GZIP_KB=$(echo "scale=1; $GZIP / 1024" | bc)
+              echo "| $file | ${SIZE_KB}KB | ${GZIP_KB}KB |" >> $GITHUB_STEP_SUMMARY
+              TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
+              TOTAL_GZIP=$((TOTAL_GZIP + GZIP))
+            fi
+          done
+
+          # Module files
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Modules" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size | Gzipped |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|---------|" >> $GITHUB_STEP_SUMMARY
+
+          for file in modules/*.js modules/**/*.js; do
+            if [ -f "$file" ]; then
+              SIZE=$(wc -c < "$file")
+              GZIP=$(gzip -c "$file" | wc -c)
+              SIZE_KB=$(echo "scale=1; $SIZE / 1024" | bc)
+              GZIP_KB=$(echo "scale=1; $GZIP / 1024" | bc)
+              echo "| $file | ${SIZE_KB}KB | ${GZIP_KB}KB |" >> $GITHUB_STEP_SUMMARY
+              TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
+              TOTAL_GZIP=$((TOTAL_GZIP + GZIP))
+            fi
+          done
+
+          TOTAL_KB=$(echo "scale=1; $TOTAL_SIZE / 1024" | bc)
+          TOTAL_GZIP_KB=$(echo "scale=1; $TOTAL_GZIP / 1024" | bc)
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Total" >> $GITHUB_STEP_SUMMARY
+          echo "- **Raw:** ${TOTAL_KB}KB" >> $GITHUB_STEP_SUMMARY
+          echo "- **Gzipped:** ${TOTAL_GZIP_KB}KB" >> $GITHUB_STEP_SUMMARY
+
+          # Set outputs for potential size limit checks
+          echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
+          echo "total_gzip=$TOTAL_GZIP" >> $GITHUB_OUTPUT
+
+      - name: Check size limits
+        run: |
+          # game.js should stay under 500KB
+          GAME_SIZE=$(wc -c < game.js)
+          LIMIT=512000
+
+          if [ $GAME_SIZE -gt $LIMIT ]; then
+            echo "::warning::game.js is larger than 500KB ($GAME_SIZE bytes)"
+          else
+            echo "game.js is within size limit ($GAME_SIZE bytes)"
+          fi
+
+          # server.js should stay under 200KB
+          SERVER_SIZE=$(wc -c < server.js)
+          SERVER_LIMIT=204800
+
+          if [ $SERVER_SIZE -gt $SERVER_LIMIT ]; then
+            echo "::warning::server.js is larger than 200KB ($SERVER_SIZE bytes)"
+          else
+            echo "server.js is within size limit ($SERVER_SIZE bytes)"
+          fi
