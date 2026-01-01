@@ -14014,6 +14014,22 @@ function initEventListeners() {
         }
     });
 
+    // Close leaderboard when clicking outside of it
+    document.addEventListener('click', (e) => {
+        const leaderboard = document.getElementById('menu-leaderboard');
+        const toggle = document.getElementById('menu-leaderboard-toggle');
+        const controls = document.getElementById('controls-info');
+
+        if (!leaderboard || leaderboard.style.display === 'none') return;
+
+        // Check if click is outside the leaderboard and not on the toggle button
+        if (!leaderboard.contains(e.target) && e.target !== toggle) {
+            leaderboard.style.display = 'none';
+            if (controls) controls.style.display = 'block';
+            if (toggle) toggle.textContent = 'VIEW LEADERBOARD';
+        }
+    });
+
     // Main menu button on game over screen
     document.getElementById('menu-button')?.addEventListener('click', () => {
         setElementDisplay('game-over-screen', 'none');
