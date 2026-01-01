@@ -1,0 +1,282 @@
+# Check for breaking changes that would break multiplayer compatibility
+# between released game clients and the current server
+
+name: Multiplayer Compatibility Check
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'server.js'
+      - 'game.js'
+      - 'modules/GameCore.js'
+      - 'modules/config.js'
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'server.js'
+      - 'game.js'
+      - 'modules/GameCore.js'
+      - 'modules/config.js'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compatibility-check:
+    name: Check Breaking Changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest release tag
+        id: release
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "Latest release: $LATEST_TAG"
+
+      - name: Check for breaking changes
+        id: breaking
+        if: steps.release.outputs.tag != 'none'
+        run: |
+          LATEST_TAG="${{ steps.release.outputs.tag }}"
+          BREAKING_CHANGES=""
+          WARNINGS=""
+
+          echo "Comparing $LATEST_TAG to HEAD..."
+          echo ""
+
+          # ==============================================
+          # CHECK 1: WebSocket Message Types
+          # ==============================================
+          echo "### Checking WebSocket message types..."
+
+          # Extract message types from released version
+          git show $LATEST_TAG:server.js > /tmp/old_server.js 2>/dev/null || echo "" > /tmp/old_server.js
+          git show $LATEST_TAG:game.js > /tmp/old_game.js 2>/dev/null || echo "" > /tmp/old_game.js
+
+          # Find message type handlers in server (case 'xxx':)
+          OLD_SERVER_MSGS=$(grep -oE "case ['\"]([a-zA-Z]+)['\"]:" /tmp/old_server.js | sed "s/case ['\"]//g; s/['\"]://g" | sort -u || echo "")
+          NEW_SERVER_MSGS=$(grep -oE "case ['\"]([a-zA-Z]+)['\"]:" server.js | sed "s/case ['\"]//g; s/['\"]://g" | sort -u || echo "")
+
+          # Check for removed message handlers (BREAKING)
+          REMOVED_MSGS=$(comm -23 <(echo "$OLD_SERVER_MSGS") <(echo "$NEW_SERVER_MSGS") 2>/dev/null || echo "")
+          if [ -n "$REMOVED_MSGS" ]; then
+            BREAKING_CHANGES="${BREAKING_CHANGES}\n### Removed Message Handlers\nThese message types were removed from server.js and will break older clients:\n\`\`\`\n$REMOVED_MSGS\n\`\`\`\n"
+          fi
+
+          # Check for new required messages (WARNING)
+          ADDED_MSGS=$(comm -13 <(echo "$OLD_SERVER_MSGS") <(echo "$NEW_SERVER_MSGS") 2>/dev/null || echo "")
+          if [ -n "$ADDED_MSGS" ]; then
+            WARNINGS="${WARNINGS}\n### New Message Handlers\nNew message types added (older clients won't send these):\n\`\`\`\n$ADDED_MSGS\n\`\`\`\n"
+          fi
+
+          # ==============================================
+          # CHECK 2: Binary Protocol Changes
+          # ==============================================
+          echo "### Checking binary protocol..."
+
+          # Check if binary message structure changed
+          OLD_BINARY=$(grep -A 50 "function.*[Bb]inary" /tmp/old_server.js | grep -E "(setUint|setFloat|setInt|DataView|ArrayBuffer)" | head -20 || echo "")
+          NEW_BINARY=$(grep -A 50 "function.*[Bb]inary" server.js | grep -E "(setUint|setFloat|setInt|DataView|ArrayBuffer)" | head -20 || echo "")
+
+          if [ "$OLD_BINARY" != "$NEW_BINARY" ] && [ -n "$OLD_BINARY" ]; then
+            BREAKING_CHANGES="${BREAKING_CHANGES}\n### Binary Protocol Modified\nThe binary message format has changed. Older clients may fail to parse server updates.\n"
+          fi
+
+          # ==============================================
+          # CHECK 3: GameCore Constants
+          # ==============================================
+          echo "### Checking GameCore constants..."
+
+          if [ -f "modules/GameCore.js" ]; then
+            git show $LATEST_TAG:modules/GameCore.js > /tmp/old_gamecore.js 2>/dev/null || echo "" > /tmp/old_gamecore.js
+
+            # Check zombie type IDs
+            OLD_ZOMBIE_TYPES=$(grep -oE "ZOMBIE_TYPES\s*=\s*\{[^}]+" /tmp/old_gamecore.js | grep -oE "[A-Z_]+:\s*[0-9]+" || echo "")
+            NEW_ZOMBIE_TYPES=$(grep -oE "ZOMBIE_TYPES\s*=\s*\{[^}]+" modules/GameCore.js | grep -oE "[A-Z_]+:\s*[0-9]+" || echo "")
+
+            if [ "$OLD_ZOMBIE_TYPES" != "$NEW_ZOMBIE_TYPES" ] && [ -n "$OLD_ZOMBIE_TYPES" ]; then
+              BREAKING_CHANGES="${BREAKING_CHANGES}\n### Zombie Type IDs Changed\nZombie type constants have changed. Clients will display wrong zombie types.\n\`\`\`diff\n- Old: $OLD_ZOMBIE_TYPES\n+ New: $NEW_ZOMBIE_TYPES\n\`\`\`\n"
+            fi
+
+            # Check weapon IDs
+            OLD_WEAPONS=$(grep -oE "WEAPONS\s*=\s*\{[^}]+" /tmp/old_gamecore.js | grep -oE "[a-z_]+:\s*\{" | sed 's/:\s*{//' || echo "")
+            NEW_WEAPONS=$(grep -oE "WEAPONS\s*=\s*\{[^}]+" modules/GameCore.js | grep -oE "[a-z_]+:\s*\{" | sed 's/:\s*{//' || echo "")
+
+            REMOVED_WEAPONS=$(comm -23 <(echo "$OLD_WEAPONS" | tr ' ' '\n' | sort) <(echo "$NEW_WEAPONS" | tr ' ' '\n' | sort) 2>/dev/null || echo "")
+            if [ -n "$REMOVED_WEAPONS" ]; then
+              BREAKING_CHANGES="${BREAKING_CHANGES}\n### Weapons Removed\nThese weapons were removed and will break clients:\n\`\`\`\n$REMOVED_WEAPONS\n\`\`\`\n"
+            fi
+          fi
+
+          # ==============================================
+          # CHECK 4: Config Changes
+          # ==============================================
+          echo "### Checking config compatibility..."
+
+          if [ -f "modules/config.js" ]; then
+            git show $LATEST_TAG:modules/config.js > /tmp/old_config.js 2>/dev/null || echo "" > /tmp/old_config.js
+
+            # Check update rate (affects interpolation)
+            OLD_RATE=$(grep -oE "updateRate['\"]?\s*[:=]\s*[0-9]+" /tmp/old_config.js | grep -oE "[0-9]+" || echo "")
+            NEW_RATE=$(grep -oE "updateRate['\"]?\s*[:=]\s*[0-9]+" modules/config.js | grep -oE "[0-9]+" || echo "")
+
+            if [ "$OLD_RATE" != "$NEW_RATE" ] && [ -n "$OLD_RATE" ]; then
+              WARNINGS="${WARNINGS}\n### Update Rate Changed\nServer update rate changed from ${OLD_RATE}ms to ${NEW_RATE}ms. May cause interpolation issues.\n"
+            fi
+          fi
+
+          # ==============================================
+          # CHECK 5: API Endpoint Changes
+          # ==============================================
+          echo "### Checking API endpoints..."
+
+          OLD_ENDPOINTS=$(grep -oE "app\.(get|post|put|delete)\s*\(['\"][^'\"]+['\"]" /tmp/old_server.js | sed "s/app\.\(get\|post\|put\|delete\)(['\"]//" | sed "s/['\"]$//" | sort -u || echo "")
+          NEW_ENDPOINTS=$(grep -oE "app\.(get|post|put|delete)\s*\(['\"][^'\"]+['\"]" server.js | sed "s/app\.\(get\|post\|put\|delete\)(['\"]//" | sed "s/['\"]$//" | sort -u || echo "")
+
+          REMOVED_ENDPOINTS=$(comm -23 <(echo "$OLD_ENDPOINTS") <(echo "$NEW_ENDPOINTS") 2>/dev/null || echo "")
+          if [ -n "$REMOVED_ENDPOINTS" ]; then
+            BREAKING_CHANGES="${BREAKING_CHANGES}\n### API Endpoints Removed\nThese REST endpoints were removed:\n\`\`\`\n$REMOVED_ENDPOINTS\n\`\`\`\n"
+          fi
+
+          # ==============================================
+          # OUTPUT RESULTS
+          # ==============================================
+          echo ""
+          echo "=== RESULTS ==="
+
+          if [ -n "$BREAKING_CHANGES" ]; then
+            echo "❌ BREAKING CHANGES DETECTED"
+            echo "has_breaking=true" >> $GITHUB_OUTPUT
+            # Escape for GitHub Actions
+            BREAKING_CHANGES=$(echo -e "$BREAKING_CHANGES" | sed 's/"/\\"/g')
+            echo "breaking_details<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$BREAKING_CHANGES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "✅ No breaking changes detected"
+            echo "has_breaking=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -n "$WARNINGS" ]; then
+            echo ""
+            echo "⚠️ WARNINGS"
+            WARNINGS=$(echo -e "$WARNINGS" | sed 's/"/\\"/g')
+            echo "warnings<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$WARNINGS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create issue for breaking changes
+        if: steps.breaking.outputs.has_breaking == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const breakingDetails = `${{ steps.breaking.outputs.breaking_details }}`;
+            const warnings = `${{ steps.breaking.outputs.warnings }}` || '';
+            const latestTag = '${{ steps.release.outputs.tag }}';
+            const commitSha = '${{ github.sha }}'.substring(0, 7);
+            const commitMsg = `${{ github.event.head_commit.message }}`.split('\n')[0];
+
+            // Check if issue already exists for this commit
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'breaking-change,multiplayer'
+            });
+
+            const issueTitle = `⚠️ Breaking Multiplayer Change Detected (${commitSha})`;
+
+            const existingIssue = existingIssues.data.find(i => i.title.includes(commitSha));
+            if (existingIssue) {
+              console.log('Issue already exists for this commit');
+              return;
+            }
+
+            const issueBody = `
+            ## Breaking Multiplayer Compatibility Detected
+
+            **Commit:** ${commitSha} - ${commitMsg}
+            **Compared Against:** ${latestTag} (latest release)
+            **Branch:** ${{ github.ref_name }}
+
+            ### ❌ Breaking Changes
+
+            The following changes will cause **released game clients (${latestTag})** to fail when connecting to the updated server:
+
+            ${breakingDetails}
+
+            ${warnings ? `### ⚠️ Warnings\n\n${warnings}` : ''}
+
+            ---
+
+            ### Required Actions
+
+            1. **Option A: Maintain Compatibility**
+               - Add backward compatibility for old message formats
+               - Keep deprecated handlers with warnings
+               - Version the protocol
+
+            2. **Option B: Force Update**
+               - Release a new game client version
+               - Add version check to reject old clients with helpful message
+               - Update minimum client version constant
+
+            3. **Option C: Revert Changes**
+               - If unintentional, revert the breaking commit
+
+            ---
+
+            *This issue was automatically created by the Multiplayer Compatibility Check workflow.*
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: ['breaking-change', 'multiplayer', 'needs-review']
+            });
+
+            console.log('Created breaking change issue');
+
+      - name: Add PR comment for breaking changes
+        if: github.event_name == 'pull_request' && steps.breaking.outputs.has_breaking == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const breakingDetails = `${{ steps.breaking.outputs.breaking_details }}`;
+            const warnings = `${{ steps.breaking.outputs.warnings }}` || '';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## ⚠️ Breaking Multiplayer Changes Detected
+
+            This PR contains changes that will break compatibility with released game clients.
+
+            ${breakingDetails}
+
+            ${warnings ? `### Warnings\n${warnings}` : ''}
+
+            **Please ensure you either:**
+            - Add backward compatibility
+            - Plan a coordinated client release
+            - Or confirm this is intentional and clients will be force-updated
+            `
+            });
+
+      - name: Fail on breaking changes (PRs only)
+        if: github.event_name == 'pull_request' && steps.breaking.outputs.has_breaking == 'true'
+        run: |
+          echo "❌ Breaking changes detected - PR requires review"
+          exit 1
