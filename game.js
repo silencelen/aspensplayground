@@ -9360,12 +9360,15 @@ function onPointerLockChange() {
 
 // ==================== SHOOTING ====================
 function shoot() {
+    // Block shooting while reloading (all weapons)
+    if (weapon.isReloading) return;
+
     const stats = getWeaponStats();
     const isPistol = weapon.current === 'pistol';
 
     // Pistol has infinite ammo, others require ammo
-    if (!isPistol && (weapon.isReloading || weapon.ammo <= 0)) {
-        if (weapon.ammo <= 0 && weapon.reserveAmmo > 0) reload();
+    if (!isPistol && weapon.ammo <= 0) {
+        if (weapon.reserveAmmo > 0) reload();
         return;
     }
 
