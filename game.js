@@ -3771,16 +3771,23 @@ function connectToServer() {
         return;
     }
 
-    // Determine WebSocket URL - use production server for Electron/file:// or same host for web
+    // Determine WebSocket URL - use production server for Electron/desktop or same host for web
+    // Detect Electron: check for file protocol, missing host, or Electron in user agent
+    const isElectron = window.location.protocol === 'file:' ||
+                       !window.location.host ||
+                       navigator.userAgent.toLowerCase().includes('electron');
+
     let wsUrl;
-    if (window.location.protocol === 'file:' || !window.location.host) {
-        // Running in Electron or local file - connect to production server
+    if (isElectron) {
+        // Running in Electron/desktop app - connect to production server
         wsUrl = 'wss://aspensplayground.com';
+        console.log('[Electron] Detected desktop app, using production server');
     } else {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         wsUrl = `${protocol}//${window.location.host}`;
     }
 
+    console.log('[WebSocket] Protocol:', window.location.protocol, 'Host:', window.location.host, 'URL:', wsUrl);
     DebugLog.log(`Connecting to server: ${wsUrl}`, 'net');
 
     // Update status to show we're connecting
