@@ -2536,20 +2536,27 @@ function damageZombie(zombieId, damage, attackerId, isHeadshot) {
 }
 
 function killZombie(zombieId, killerId, isHeadshot) {
-    const zombie = GameState.zombies.get(zombieId);
+    // Get room from killer for proper room-scoped operations
+    const room = getPlayerRoom(killerId);
+    if (!room) {
+        log(`killZombie: No room found for killer ${killerId}`, 'ERROR');
+        return;
+    }
+
+    const zombie = room.zombies.get(zombieId);
     if (!zombie) return;
 
     zombie.isAlive = false;
-    GameState.zombiesRemaining--;
-    GameState.totalKills++;
+    room.zombiesRemaining--;
+    room.totalKills++;
 
     // Score - use zombie's points value with headshot bonus (synced with client)
     const basePoints = zombie.points || 100;
     const points = basePoints + (isHeadshot ? Math.floor(basePoints * 0.5) : 0);
-    GameState.totalScore += points;
+    room.totalScore += points;
 
     // Award points to killer
-    const killer = GameState.players.get(killerId);
+    const killer = room.players.get(killerId);
     if (killer) {
         killer.kills++;
         killer.score += points;
@@ -2558,24 +2565,24 @@ function killZombie(zombieId, killerId, isHeadshot) {
     // Track kill in player's authenticated session (server-side verification)
     addKillToSession(killerId, points, isHeadshot);
 
-    log(`Zombie ${zombieId} killed by ${killerId}! Remaining: ${GameState.zombiesRemaining}`, 'SUCCESS');
+    log(`Zombie ${zombieId} killed by ${killerId} in room ${room.id}! Remaining: ${room.zombiesRemaining}`, 'SUCCESS');
 
     // Exploder zombies explode on death - use GameCore for explosion logic
     if (zombie.type === 'exploder') {
         const explosionRadius = GameCore.Combat.getExplosionRadius();
-        
-        GameState.players.forEach((player, playerId) => {
+
+        room.players.forEach((player, playerId) => {
             if (!player.isAlive) return;
             const distToPlayer = GameCore.Utils.distance(zombie.position, player.position);
             const finalDamage = GameCore.Combat.calculateExploderDamage(distToPlayer);
             if (finalDamage > 0) {
-                damagePlayer(playerId, finalDamage);
+                damagePlayer(playerId, finalDamage, room);
                 log(`Exploder explosion damaged player ${playerId} for ${finalDamage}`, 'GAME');
             }
         });
-        
+
         // Broadcast explosion for client visual effects
-        broadcast({
+        broadcastToRoom(room, {
             type: 'exploderExplosion',
             position: zombie.position,
             radius: explosionRadius
@@ -2587,11 +2594,11 @@ function killZombie(zombieId, killerId, isHeadshot) {
         const pickupsToSpawn = zombie.isBossWaveBoss ? GameCore.Combat.getBossPickupCount() : 1;
         for (let i = 0; i < pickupsToSpawn; i++) {
             const pickupType = GameCore.Combat.rollPickupType();
-            spawnPickup(zombie.position, pickupType);
+            spawnPickup(room, zombie.position, pickupType);
         }
     }
 
-    broadcast({
+    broadcastToRoom(room, {
         type: 'zombieKilled',
         zombieId: zombieId,
         killerId: killerId,
@@ -2600,28 +2607,36 @@ function killZombie(zombieId, killerId, isHeadshot) {
     });
 
     // Check wave completion
-    if (GameState.zombiesRemaining <= 0) {
+    if (room.zombiesRemaining <= 0) {
         // Use same formula as startWave (synced with client)
-        const isBossWave = GameState.wave > 0 && GameState.wave % 10 === 0;
-        const expectedZombies = isBossWave ? 1 : Math.floor(5 + (GameState.wave - 1) * 2 + Math.pow(GameState.wave, 1.3));
-        if (GameState.zombiesSpawned >= expectedZombies) {
+        const isBossWave = room.wave > 0 && room.wave % 10 === 0;
+        const expectedZombies = isBossWave ? 1 : Math.floor(5 + (room.wave - 1) * 2 + Math.pow(room.wave, 1.3));
+        if (room.zombiesSpawned >= expectedZombies) {
             nextWave();
         }
     }
 
     // Clean up zombie after delay
+    const roomId = room.id;
     setTimeout(() => {
-        const zombie = GameState.zombies.get(zombieId);
-        if (zombie) {
-            ZombiePool.release(zombie);  // Return to pool for reuse
-            GameState.zombies.delete(zombieId);
+        const currentRoom = gameRooms.get(roomId);
+        if (!currentRoom) return;
+        const zombieToClean = currentRoom.zombies.get(zombieId);
+        if (zombieToClean) {
+            ZombiePool.release(zombieToClean);  // Return to pool for reuse
+            currentRoom.zombies.delete(zombieId);
         }
     }, 5000);
 }
 
 // ==================== PICKUP MANAGEMENT ====================
-function spawnPickup(position, type) {
-    const id = `pickup_${++GameState.lastPickupId}`;
+function spawnPickup(room, position, type) {
+    if (!room) {
+        log('spawnPickup: No room provided', 'ERROR');
+        return;
+    }
+
+    const id = `pickup_${++room.lastPickupId}`;
 
     // Add small random offset to prevent instant collection when standing on kill spot
     const offsetX = (Math.random() - 0.5) * 1.5;
@@ -2633,19 +2648,21 @@ function spawnPickup(position, type) {
         position: { x: position.x + offsetX, y: 0.5, z: position.z + offsetZ }
     };
 
-    GameState.pickups.set(id, pickup);
-    log(`Spawned ${type} pickup ${id}`, 'GAME');
+    room.pickups.set(id, pickup);
+    log(`Spawned ${type} pickup ${id} in room ${room.id}`, 'GAME');
 
-    broadcast({
+    broadcastToRoom(room, {
         type: 'pickupSpawned',
         pickup: pickup
     });
 
     // Remove after 30 seconds (synced with client)
+    const roomId = room.id;
     setTimeout(() => {
-        if (GameState.pickups.has(id)) {
-            GameState.pickups.delete(id);
-            broadcast({
+        const currentRoom = gameRooms.get(roomId);
+        if (currentRoom && currentRoom.pickups.has(id)) {
+            currentRoom.pickups.delete(id);
+            broadcastToRoom(currentRoom, {
                 type: 'pickupRemoved',
                 pickupId: id
             });
@@ -2654,8 +2671,14 @@ function spawnPickup(position, type) {
 }
 
 function collectPickup(pickupId, playerId) {
-    const pickup = GameState.pickups.get(pickupId);
-    const player = GameState.players.get(playerId);
+    const room = getPlayerRoom(playerId);
+    if (!room) {
+        log(`collectPickup: No room found for player ${playerId}`, 'ERROR');
+        return;
+    }
+
+    const pickup = room.pickups.get(pickupId);
+    const player = room.players.get(playerId);
 
     if (!pickup || !player) return;
 
@@ -2674,8 +2697,8 @@ function collectPickup(pickupId, playerId) {
     }
 
     if (collected) {
-        GameState.pickups.delete(pickupId);
-        broadcast({
+        room.pickups.delete(pickupId);
+        broadcastToRoom(room, {
             type: 'pickupCollected',
             pickupId: pickupId,
             playerId: playerId,
