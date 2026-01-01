@@ -3557,6 +3557,8 @@
                 font-size: clamp(20px, 6vw, 28px) !important;
                 margin-bottom: 2px;
                 line-height: 1.1;
+                text-align: center;
+                width: 100%;
             }
 
             #start-screen .menu-subtitle {
@@ -3613,15 +3615,29 @@
             }
 
             .leaderboard-toggle {
-                font-size: 11px;
-                padding: 5px 12px;
-                margin-top: 5px;
+                position: absolute;
+                top: max(10px, env(safe-area-inset-top));
+                left: max(10px, env(safe-area-inset-left));
+                font-size: 10px;
+                padding: 5px 10px;
+                margin-top: 0;
+                z-index: 10;
             }
 
             #menu-leaderboard {
-                max-height: 100px;
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                max-height: 70vh;
                 min-width: auto;
-                width: 85%;
+                width: 90%;
+                max-width: 350px;
+                z-index: 300;
+                background: rgba(0, 0, 0, 0.95);
+                border: 2px solid #8b0000;
+                border-radius: 10px;
+                box-shadow: 0 0 30px rgba(139, 0, 0, 0.5);
                 padding: 8px;
             }
 
@@ -3634,6 +3650,18 @@
             #menu-leaderboard .leaderboard-table th {
                 font-size: 10px;
                 padding: 2px 4px;
+            }
+
+            /* Leaderboard popup backdrop */
+            #menu-leaderboard::before {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: -1;
             }
 
             .legal-footer {
