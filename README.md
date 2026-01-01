@@ -107,7 +107,14 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Links
 
 - [Play the Game](https://aspensplayground.com)
+- [Wiki & Documentation](https://github.com/silencelen/aspensplayground/wiki)
 - [Download Desktop App](https://github.com/silencelen/aspensplayground-core/releases)
 - [Report Issues](https://github.com/silencelen/aspensplayground-core/issues)
 - [Privacy Policy](https://aspensplayground.com/privacy.html)
 - [Terms of Service](https://aspensplayground.com/terms.html)
+
+---
+
+## AI Disclosure
+
+This project contains content generated with the assistance of generative AI tools (Claude by Anthropic). AI was used to help write code, documentation, and other project materials. All AI-generated content has been reviewed and approved by the project maintainers.
