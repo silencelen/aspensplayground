@@ -3418,6 +3418,16 @@ const cachedGeometries = {
         this.flashGlowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8 });
         this.sparkMat = new THREE.MeshBasicMaterial({ color: 0xffff44, transparent: true, opacity: 1 });
 
+        // Blood and shell materials (shared across all particles)
+        this.bloodMat = new THREE.MeshBasicMaterial({ color: 0x8b0000, transparent: true });
+        this.shellMat = new THREE.MeshStandardMaterial({
+            color: 0xd4a017,
+            metalness: 0.8,
+            roughness: 0.3,
+            emissive: 0xd4a017,
+            emissiveIntensity: 0.1
+        });
+
         this.initialized = true;
         DebugLog.log('Cached geometries initialized', 'info');
     }
@@ -3435,20 +3445,19 @@ const particlePool = {
 
     // Pre-allocate common particles to avoid initial allocation spikes
     preallocate() {
-        // Initialize cached geometries first
+        // Initialize cached geometries first (includes materials)
         cachedGeometries.init();
 
-        const bloodMat = new THREE.MeshBasicMaterial({ color: 0x8b0000, transparent: true });
+        // Use cached blood material - shared across all blood particles
         for (let i = 0; i < 20; i++) {
-            const mesh = new THREE.Mesh(cachedGeometries.bloodSphere, bloodMat.clone());
+            const mesh = new THREE.Mesh(cachedGeometries.bloodSphere, cachedGeometries.bloodMat);
             mesh.visible = false;
             this.blood.push({ mesh, type: 'blood' });
         }
 
-        // Pre-allocate shell casings
-        const shellMat = new THREE.MeshStandardMaterial({ color: 0xd4a017, metalness: 0.8 });
+        // Use cached shell material - shared across all shells
         for (let i = 0; i < 10; i++) {
-            const mesh = new THREE.Mesh(cachedGeometries.shellCasing, shellMat.clone());
+            const mesh = new THREE.Mesh(cachedGeometries.shellCasing, cachedGeometries.shellMat);
             mesh.visible = false;
             this.shells.push({ mesh, type: 'shell' });
         }
@@ -3537,7 +3546,8 @@ const particlePool = {
 const activeParticles = [];
 
 function spawnBloodParticles(position, count = 8) {
-    const bloodMat = new THREE.MeshBasicMaterial({ color: 0x8b0000 });
+    // Use cached material instead of creating new one each call
+    if (!cachedGeometries.initialized) cachedGeometries.init();
 
     for (let i = 0; i < count; i++) {
         let particle;
@@ -3552,7 +3562,7 @@ function spawnBloodParticles(position, count = 8) {
             }
         } else {
             const geo = new THREE.SphereGeometry(0.03 + Math.random() * 0.02, 4, 4);
-            const mesh = new THREE.Mesh(geo, bloodMat.clone());
+            const mesh = new THREE.Mesh(geo, cachedGeometries.bloodMat);
             particle = { mesh, type: 'blood' };
         }
 
@@ -3587,13 +3597,8 @@ function spawnBloodParticles(position, count = 8) {
 }
 
 function spawnShellCasing(position, direction) {
-    const shellMat = new THREE.MeshStandardMaterial({
-        color: 0xd4a017,
-        metalness: 0.8,
-        roughness: 0.3,
-        emissive: 0xd4a017,
-        emissiveIntensity: 0.1
-    });
+    // Use cached material instead of creating new one each call
+    if (!cachedGeometries.initialized) cachedGeometries.init();
 
     let particle;
 
@@ -3602,7 +3607,7 @@ function spawnShellCasing(position, direction) {
         particle.mesh.visible = true;
     } else {
         const geo = new THREE.CylinderGeometry(0.008, 0.008, 0.025, 6);
-        const mesh = new THREE.Mesh(geo, shellMat.clone());
+        const mesh = new THREE.Mesh(geo, cachedGeometries.shellMat);
         particle = { mesh, type: 'shell' };
     }
 
