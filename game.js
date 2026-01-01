@@ -4867,6 +4867,9 @@ function handlePickupCollected(message) {
             } else if (message.pickupType === 'ammo') {
                 weapon.reserveAmmo = Math.min(weapon.reserveAmmo + 15, 180);
                 DebugLog.log('Collected ammo! +15', 'success');
+            } else if (message.pickupType === 'grenade') {
+                weapon.grenades = Math.min(weapon.grenades + 2, 10);
+                DebugLog.log('Collected grenades! +2', 'success');
             }
             playSound('pickup');
             updateHUD();
