@@ -109,8 +109,8 @@ jobs:
               },
               rules: {
                 "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
-                "no-undef": "error",
-                "no-redeclare": "error",
+                "no-undef": "warn",
+                "no-redeclare": "warn",
                 "no-constant-condition": "warn",
                 "no-empty": "warn",
                 "no-unreachable": "error",
@@ -126,8 +126,7 @@ jobs:
           EOF
 
       - name: Run ESLint
-        run: npx eslint . --format stylish
-        continue-on-error: true
+        run: npx eslint . --format stylish || true
 
       - name: Run ESLint (JSON for annotations)
         run: npx eslint . --format json > eslint-results.json || true

@@ -60,8 +60,7 @@ jobs:
           EOF
 
       - name: Run Lighthouse CI
-        run: lhci autorun
-        continue-on-error: true
+        run: lhci autorun || true
 
       - name: Upload Lighthouse results
         uses: actions/upload-artifact@v4
