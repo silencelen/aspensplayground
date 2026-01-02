@@ -4410,6 +4410,11 @@ function handlePlayerJoined(playerData) {
     playerData.health = playerData.health || 100;
     playerData.maxHealth = playerData.maxHealth || 100;
 
+    // Initialize interpolation targets for smooth movement/rotation
+    const initialRotY = playerData.rotation ? playerData.rotation.y : 0;
+    Interpolation.updateEntity(playerData, playerData.position, initialRotY);
+    playerData.targetHeadRotation = playerData.rotation ? playerData.rotation.x : 0;
+
     remotePlayers.set(playerData.id, playerData);
     createRemotePlayerMesh(playerData);
 
@@ -4562,9 +4567,19 @@ function handlePlayerDied(playerId) {
                     SpectatorMode.spectatingPlayerId = alivePlayers[0].id;
                     SpectatorMode.updateSpectatorUI();
                 } else {
-                    // No one left to spectate
+                    // No one left to spectate - game over for everyone
                     SpectatorMode.hideSpectatorUI();
                     SpectatorMode.isSpectating = false;
+
+                    // Trigger game over screen for spectators
+                    if (!GameState.isGameOver) {
+                        DebugLog.log('All players dead - triggering game over for spectator', 'game');
+                        handleGameOver({
+                            wave: GameState.wave,
+                            totalKills: GameStats.kills,
+                            totalScore: playerState.score
+                        });
+                    }
                 }
             }
         }
