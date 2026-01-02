@@ -5041,6 +5041,9 @@ function handleWaveComplete(message) {
 function handleGameStart(message) {
     DebugLog.log('Game starting!', 'game');
 
+    // Ensure animation loop is running and clock is reset
+    ensureAnimationRunning();
+
     // Exit spectator mode if we were spectating
     if (SpectatorMode.isSpectating) {
         SpectatorMode.exit();
@@ -8775,11 +8778,9 @@ function unregisterAnimation(id) {
 }
 
 function cleanupAnimations() {
-    // Cancel main game loop
-    if (mainAnimationId) {
-        cancelAnimationFrame(mainAnimationId);
-        mainAnimationId = null;
-    }
+    // NOTE: Don't cancel the main animation loop - it should run continuously
+    // The loop checks GameState.isRunning before doing game updates
+    // Cancelling it would break rendering when starting a new game
 
     // Cancel reload animation
     if (reloadAnimationId) {
@@ -8792,6 +8793,17 @@ function cleanupAnimations() {
         cancelAnimationFrame(id);
     });
     activeAnimations.clear();
+}
+
+// Ensure animation loop is running (called when starting new game)
+function ensureAnimationRunning() {
+    if (!mainAnimationId) {
+        clock = new THREE.Clock();
+        animate();
+    } else {
+        // Reset the clock for accurate delta timing in new game
+        clock.start();
+    }
 }
 
 // ==================== CONTROLS ====================
@@ -12030,6 +12042,9 @@ function updateEffects(delta) {
 function startSinglePlayerGame() {
     DebugLog.log('Starting Single Player mode...', 'game');
 
+    // Ensure animation loop is running and clock is reset
+    ensureAnimationRunning();
+
     // Re-initialize controls (may have been cleaned up on previous quit)
     initControls();
 
@@ -14444,6 +14459,14 @@ async function quitToMenu() {
     });
     zombies.clear();
     invalidateZombieMeshCache();
+
+    // Clear bullets, projectiles, and acid pools
+    bullets.forEach(b => { if (b.mesh) scene.remove(b.mesh); });
+    bullets.length = 0;
+    projectiles.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
+    projectiles.length = 0;
+    acidPools.forEach(pool => { if (pool.mesh) scene.remove(pool.mesh); });
+    acidPools.length = 0;
 
     // Reset map manager for fresh start on next game
     if (typeof MapManager !== 'undefined') {
