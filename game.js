@@ -1483,6 +1483,12 @@ const WeaponUpgrades = {
 
     // Show upgrade shop
     showShop() {
+        // Don't show shop to dead players or spectators
+        if (!playerState.isAlive || SpectatorMode.isSpectating) {
+            DebugLog.log('Shop skipped for spectator/dead player', 'game');
+            return;
+        }
+
         this.shopOpen = true;
         this.localPlayerReady = false;
         this.playersReady.clear();
@@ -11990,6 +11996,9 @@ function animate() {
         SpectatorMode.updateCamera();
         updateRemotePlayerPositions(); // Keep updating remote player positions
         updateRemotePlayerAnimations(deltaTime);
+        updateZombieAnimations(deltaTime); // Show zombie animations to spectators
+        updateParticles(deltaTime); // Keep particles updating so they despawn properly
+        updateEffects(deltaTime); // Keep visual effects updating
     }
 
     // Force matrix updates before render (fixes frozen scene in multiplayer)

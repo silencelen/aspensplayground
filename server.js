@@ -2877,7 +2877,8 @@ function openShop(waveBonus = 500) {
         showShop: true
     });
 
-    log(`Upgrade shop opened for ${GameState.players.size} players`, 'GAME');
+    const aliveCount = Array.from(GameState.players.values()).filter(p => p.isAlive).length;
+    log(`Upgrade shop opened for ${aliveCount} alive players`, 'GAME');
 
     // Start shop timeout (30 seconds max)
     if (GameState.shopTimeout) {
@@ -2895,7 +2896,9 @@ function handleShopReady(playerId) {
     if (!GameState.shopOpen) return;
 
     GameState.shopPlayersReady.add(playerId);
-    const totalPlayers = GameState.players.size;
+    // Only count alive players (spectators don't need to confirm)
+    const alivePlayers = Array.from(GameState.players.values()).filter(p => p.isAlive);
+    const totalPlayers = alivePlayers.length;
     const readyCount = GameState.shopPlayersReady.size;
 
     log(`Player ${playerId} ready in shop (${readyCount}/${totalPlayers})`, 'GAME');
@@ -3964,7 +3967,7 @@ setInterval(() => {
 
             room.players.forEach((player, playerId) => {
                 if (!player.ws || player.ws.readyState !== WebSocket.OPEN) return;
-                if (!player.isAlive) return;
+                // Send to all players including spectators (dead players need zombie updates)
 
                 try {
                     player.ws.send(binaryData);
