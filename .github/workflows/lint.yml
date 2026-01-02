@@ -77,8 +77,19 @@ jobs:
                   Buffer: "readonly",
                   // Three.js
                   THREE: "readonly",
-                  // Game globals
+                  // Game globals (defined in modules/*.js, loaded before game.js)
                   GameCore: "readonly",
+                  CONFIG: "readonly",
+                  DebugLog: "readonly",
+                  GameStats: "readonly",
+                  DamageNumbers: "readonly",
+                  Interpolation: "readonly",
+                  ZombiePool: "readonly",
+                  ZombieSkeleton: "readonly",
+                  MapManager: "readonly",
+                  setElementStyle: "readonly",
+                  setElementDisplay: "readonly",
+                  WebGLRenderingContext: "readonly",
                 }
               },
               rules: {
