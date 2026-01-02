@@ -620,15 +620,15 @@ const SpectatorMode = {
         camera.position.copy(targetPos);
 
         // Match player rotation exactly for first-person view
-        // Use mesh rotation (interpolated) for smooth view, fall back to raw data
+        // Use raw player rotation data for responsive spectating (not interpolated mesh)
         camera.rotation.order = 'YXZ';
-        if (mesh.rotation) {
-            // Mesh rotation is already interpolated, but offset by PI
-            camera.rotation.y = mesh.rotation.y - Math.PI;
+        // Y rotation (horizontal look) - use targetRotation for up-to-date direction
+        if (playerData.targetRotation !== undefined) {
+            camera.rotation.y = playerData.targetRotation;
         } else if (playerData.rotation) {
             camera.rotation.y = playerData.rotation.y || 0;
         }
-        // Use targetHeadRotation for smooth vertical look
+        // X rotation (vertical look) - use targetHeadRotation for pitch
         camera.rotation.x = playerData.targetHeadRotation !== undefined ? playerData.targetHeadRotation : (playerData.rotation ? playerData.rotation.x : 0);
         camera.rotation.z = 0;
 
@@ -12176,10 +12176,13 @@ function updateZombieAnimations(delta) {
             } else if (zombie.abilityState && zombie.abilityState.isCharging) {
                 const chargeDuration = GameCore.Constants.ABILITIES.tank.charge.duration;
                 const chargeProgress = (performance.now() - zombie.abilityState.chargeStartTime) / chargeDuration;
-                
+
                 if (chargeProgress >= 1) {
                     zombie.abilityState.isCharging = false;
                 }
+            } else {
+                // Not in any special ability - ensure zombie stays at ground level
+                zombie.mesh.position.y = 0;
             }
         } else if (zombie.isAlive) {
             // Singleplayer: direct position update (collision system handles mesh sync now)
@@ -12218,10 +12221,16 @@ function updateZombieAnimations(delta) {
                 arms.forEach(arm => {
                     arm.rotation.x = -0.5 - attackAngle;
                 });
-                zombie.mesh.position.y = 0.1 + Math.sin(attackProgress * Math.PI) * 0.2;
+                // Only apply Y bounce in singleplayer (multiplayer keeps Y=0)
+                if (GameState.mode !== 'multiplayer') {
+                    zombie.mesh.position.y = 0.1 + Math.sin(attackProgress * Math.PI) * 0.2;
+                }
             } else {
                 zombie.walkCycle += delta * 8;
-                zombie.mesh.position.y = Math.sin(zombie.walkCycle) * 0.1;
+                // Only apply Y bounce in singleplayer (multiplayer keeps Y=0)
+                if (GameState.mode !== 'multiplayer') {
+                    zombie.mesh.position.y = Math.sin(zombie.walkCycle) * 0.1;
+                }
                 zombie.mesh.rotation.z = Math.sin(zombie.walkCycle) * 0.05;
 
                 arms.forEach((arm, i) => {
