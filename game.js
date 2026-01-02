@@ -4713,6 +4713,30 @@ function handlePlayerLeft(playerId) {
         DebugLog.log(`Player left: ${playerData.name}`, 'net');
     }
 
+    // If we're spectating this player, switch to another or exit spectator mode
+    if (SpectatorMode.isSpectating && SpectatorMode.spectatingPlayerId === playerId) {
+        const otherAlivePlayers = SpectatorMode.getAlivePlayers().filter(p => p.id !== playerId);
+        if (otherAlivePlayers.length > 0) {
+            // Switch to another player
+            SpectatorMode.spectatingPlayerId = otherAlivePlayers[0].id;
+            SpectatorMode.hideSpectatedMesh(SpectatorMode.spectatingPlayerId);
+            SpectatorMode.updateSpectatorWeapon();
+            SpectatorMode.updateSpectatorUI();
+            DebugLog.log(`Spectated player left, switching to ${otherAlivePlayers[0].name}`, 'game');
+        } else {
+            // No one left to spectate - trigger game over
+            DebugLog.log('Spectated player left and no one else alive', 'game');
+            SpectatorMode.exit();
+            if (!GameState.isGameOver) {
+                handleGameOver({
+                    wave: GameState.wave,
+                    totalKills: GameStats.kills,
+                    totalScore: playerState.score
+                });
+            }
+        }
+    }
+
     remotePlayers.delete(playerId);
 
     const mesh = remotePlayerMeshes.get(playerId);
@@ -5663,6 +5687,68 @@ function handleGameReset() {
     GameState.totalKills = 0;
     GameState.totalScore = 0;
     updateHUD();
+}
+
+// Return to lobby after a multiplayer game ends
+function returnToMultiplayerLobby() {
+    DebugLog.log('Returning to multiplayer lobby', 'game');
+
+    // Clear zombies and pickups
+    zombies.forEach((z, id) => {
+        if (z.mesh) scene.remove(z.mesh);
+    });
+    zombies.clear();
+
+    pickups.forEach((p, id) => {
+        if (p.mesh) scene.remove(p.mesh);
+    });
+    pickups.clear();
+
+    // Reset game state
+    GameState.wave = 1;
+    GameState.totalKills = 0;
+    GameState.totalScore = 0;
+    GameState.isRunning = false;
+    GameState.isGameOver = false;
+    GameState.isReady = false;
+    GameState.isInLobby = true;
+
+    // Reset player state
+    playerState.health = CONFIG.player.maxHealth;
+    playerState.isAlive = true;
+    playerState.score = 0;
+    GameStats.reset();
+    SpectatorMode.exit();
+
+    // Reset weapons to defaults
+    resetWeaponsToDefaults();
+
+    // Reset remote players visibility
+    remotePlayerMeshes.forEach((mesh, id) => {
+        mesh.visible = true;
+    });
+
+    // Hide game UI, show lobby
+    setElementDisplay('game-over-screen', 'none');
+    setElementDisplay('hud', 'none');
+    setElementDisplay('crosshair', 'none');
+    setElementDisplay('multiplayer-panel', 'none');
+    setElementDisplay('lobby-screen', 'flex');
+
+    // Exit pointer lock
+    document.exitPointerLock();
+
+    // Update ready button to show not ready
+    const readyBtn = document.getElementById('ready-button');
+    if (readyBtn) {
+        readyBtn.textContent = 'READY';
+        readyBtn.classList.remove('ready');
+    }
+
+    // Send ready state to server (not ready)
+    sendToServer({ type: 'ready', isReady: false });
+
+    updatePlayerList();
 }
 
 // Throttle sync processing to avoid freezing
@@ -14665,15 +14751,16 @@ function initEventListeners() {
         leaveLobby();
     });
 
-    // Restart button
+    // Restart button - singleplayer restarts game, multiplayer returns to lobby
     document.getElementById('restart-button')?.addEventListener('click', () => {
         if (GameState.mode === 'singleplayer') {
             resetSinglePlayerGame();
             startSinglePlayerGame();
+            setElementDisplay('game-over-screen', 'none');
         } else {
-            sendToServer({ type: 'requestReset' });
+            // Multiplayer: return to lobby to ready up again
+            returnToMultiplayerLobby();
         }
-        setElementDisplay('game-over-screen', 'none');
     });
 
     document.getElementById('resume-button')?.addEventListener('click', () => {
