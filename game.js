@@ -1,6 +1,6 @@
 // ============================================
 // ASPEN'S PLAYGROUND - Multiplayer Zombie Shooter
-// Haunted Chuck E. Cheese Theme
+// Haunted Arcade Theme
 // ============================================
 // Note: CONFIG, DebugLog, and utility objects are loaded from modules/
 
