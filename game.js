@@ -384,6 +384,9 @@ const SpectatorMode = {
     isSpectating: false,
     spectatingPlayerId: null,
     spectatorCamera: null,
+    _hiddenMeshId: null,
+    _originalWeaponVisibility: {},  // Track original weapon visibility states
+    _deathOverlayShown: false,  // Track if death overlay was already shown
 
     // Get list of alive players to spectate
     getAlivePlayers() {
@@ -413,6 +416,9 @@ const SpectatorMode = {
         // Detach camera from player and make it independent
         player.remove(camera);
         scene.add(camera);
+
+        // Show the spectated player's weapon model
+        this.updateSpectatorWeapon();
 
         this.showSpectatorUI();
         DebugLog.log(`Now spectating: ${alivePlayers[0].name}`, 'info');
@@ -450,13 +456,90 @@ const SpectatorMode = {
         }
     },
 
+    // Update weapon model to show spectated player's weapon
+    updateSpectatorWeapon() {
+        if (!this.isSpectating || !this.spectatingPlayerId) return;
+
+        const playerData = remotePlayers.get(this.spectatingPlayerId);
+        if (!playerData) return;
+
+        const spectatedWeapon = playerData.currentWeapon || 'pistol';
+
+        // Hide all weapon models first
+        Object.keys(weaponModels).forEach(key => {
+            if (weaponModels[key] && weaponModels[key].group) {
+                weaponModels[key].group.visible = false;
+            }
+        });
+
+        // Show the spectated player's weapon
+        const targetModel = weaponModels[spectatedWeapon];
+        if (targetModel && targetModel.group) {
+            targetModel.group.visible = true;
+            weapon.model = targetModel.group;
+        }
+    },
+
+    // Update HUD to show spectated player's stats
+    updateSpectatorHUD() {
+        if (!this.isSpectating || !this.spectatingPlayerId) return;
+
+        const playerData = remotePlayers.get(this.spectatingPlayerId);
+        if (!playerData) return;
+
+        // Update health bar
+        const healthPercent = Math.max(0, Math.min(100, (playerData.health / (playerData.maxHealth || 100)) * 100));
+        setElementStyle('health-bar', 'width', `${healthPercent}%`);
+
+        const mobileHealthBar = document.getElementById('mobile-health-bar');
+        if (mobileHealthBar) {
+            mobileHealthBar.style.width = `${healthPercent}%`;
+            if (healthPercent <= 25) {
+                mobileHealthBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';
+            } else if (healthPercent <= 50) {
+                mobileHealthBar.style.background = 'linear-gradient(90deg, #8b4500, #ff8c00)';
+            } else {
+                mobileHealthBar.style.background = 'linear-gradient(90deg, #006400, #00ff00)';
+            }
+        }
+
+        // Update weapon display to show spectated player's weapon
+        const spectatedWeapon = playerData.currentWeapon || 'pistol';
+        const weaponDisplay = document.getElementById('weapon-display');
+        if (weaponDisplay) {
+            // Capitalize weapon name
+            const weaponName = spectatedWeapon.charAt(0).toUpperCase() + spectatedWeapon.slice(1);
+            weaponDisplay.textContent = weaponName;
+        }
+
+        const mobileWeaponName = document.getElementById('mobile-weapon-name');
+        if (mobileWeaponName) {
+            const weaponName = spectatedWeapon.charAt(0).toUpperCase() + spectatedWeapon.slice(1);
+            mobileWeaponName.textContent = weaponName;
+        }
+
+        // Ammo display - show "SPECTATING" since we don't have real-time ammo sync
+        const ammoDisplay = document.getElementById('ammo-display');
+        if (ammoDisplay) {
+            ammoDisplay.textContent = '--';
+        }
+        const mobileAmmoCount = document.getElementById('mobile-ammo-count');
+        if (mobileAmmoCount) {
+            mobileAmmoCount.textContent = '--';
+        }
+    },
+
     // Exit spectator mode
     exit() {
         this.isSpectating = false;
         this.spectatingPlayerId = null;
+        this._deathOverlayShown = false;
 
         // Show any hidden meshes
         this.showAllMeshes();
+
+        // Restore local player's weapon visibility
+        updateWeaponModel();
 
         // Reattach camera to player
         scene.remove(camera);
@@ -478,6 +561,9 @@ const SpectatorMode = {
         // Update mesh visibility
         this.hideSpectatedMesh(this.spectatingPlayerId);
 
+        // Update weapon model for new spectated player
+        this.updateSpectatorWeapon();
+
         this.updateSpectatorUI();
         DebugLog.log(`Now spectating: ${alivePlayers[nextIndex].name}`, 'info');
     },
@@ -493,6 +579,9 @@ const SpectatorMode = {
 
         // Update mesh visibility
         this.hideSpectatedMesh(this.spectatingPlayerId);
+
+        // Update weapon model for new spectated player
+        this.updateSpectatorWeapon();
 
         this.updateSpectatorUI();
         DebugLog.log(`Now spectating: ${alivePlayers[prevIndex].name}`, 'info');
@@ -510,6 +599,8 @@ const SpectatorMode = {
             const alivePlayers = this.getAlivePlayers();
             if (alivePlayers.length > 0) {
                 this.spectatingPlayerId = alivePlayers[0].id;
+                this.hideSpectatedMesh(this.spectatingPlayerId);
+                this.updateSpectatorWeapon();
                 this.updateSpectatorUI();
             } else {
                 // No one left to spectate
@@ -540,14 +631,20 @@ const SpectatorMode = {
         // Use targetHeadRotation for smooth vertical look
         camera.rotation.x = playerData.targetHeadRotation !== undefined ? playerData.targetHeadRotation : (playerData.rotation ? playerData.rotation.x : 0);
         camera.rotation.z = 0;
+
+        // Update HUD to show spectated player's stats
+        this.updateSpectatorHUD();
     },
 
     // Show spectator UI
     showSpectatorUI() {
         const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-        // Show death overlay first
-        this.showDeathOverlay();
+        // Show death overlay only once when first entering spectator mode
+        if (!this._deathOverlayShown) {
+            this.showDeathOverlay();
+            this._deathOverlayShown = true;
+        }
 
         let ui = document.getElementById('spectator-ui');
         if (!ui) {
@@ -580,6 +677,9 @@ const SpectatorMode = {
 
     // Show "YOU DIED" overlay that fades out
     showDeathOverlay() {
+        // Don't show if game is already over
+        if (GameState.isGameOver) return;
+
         let overlay = document.getElementById('death-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
@@ -696,6 +796,9 @@ const SpectatorMode = {
         // Show any hidden meshes first
         this.showAllMeshes();
 
+        // Restore local player's weapon
+        updateWeaponModel();
+
         const ui = document.getElementById('spectator-ui');
         if (ui && ui.parentNode) ui.parentNode.removeChild(ui);
 
@@ -705,6 +808,7 @@ const SpectatorMode = {
         this.isSpectating = false;
         this.spectatingPlayerId = null;
         this._hiddenMeshId = null;
+        this._deathOverlayShown = false;
     }
 };
 
@@ -4234,6 +4338,10 @@ function handleServerMessage(message) {
             handlePlayerHealthSync(message);
             break;
 
+        case 'playerWeaponSwitch':
+            handlePlayerWeaponSwitch(message);
+            break;
+
         case 'zombieSpawned':
             handleZombieSpawned(message.zombie);
             break;
@@ -4572,6 +4680,9 @@ function handlePlayerJoined(playerData) {
     // Initialize health tracking
     playerData.health = playerData.health || 100;
     playerData.maxHealth = playerData.maxHealth || 100;
+    playerData.currentWeapon = playerData.currentWeapon || 'pistol';
+    playerData.ammo = 0;  // Will be updated via sync
+    playerData.reserveAmmo = 0;
 
     // Initialize interpolation targets for smooth movement/rotation
     const initialRotY = playerData.rotation ? playerData.rotation.y : 0;
@@ -4710,21 +4821,15 @@ function handlePlayerDied(playerId) {
             if (alivePlayers.length > 0) {
                 SpectatorMode.enter();
             } else {
-                // No one left alive - we're the last to die, trigger game over
+                // No one left alive - we're the last to die, trigger game over immediately
                 if (!GameState.isGameOver) {
                     DebugLog.log('Last player dead - triggering game over', 'game');
-                    // Show death overlay briefly before game over screen
-                    SpectatorMode.showDeathOverlay();
-                    // Delay game over slightly so death overlay is visible
-                    setTimeout(() => {
-                        if (!GameState.isGameOver) {
-                            handleGameOver({
-                                wave: GameState.wave,
-                                totalKills: GameStats.kills,
-                                totalScore: playerState.score
-                            });
-                        }
-                    }, 1500);
+                    // Don't show death overlay - go straight to game over
+                    handleGameOver({
+                        wave: GameState.wave,
+                        totalKills: GameStats.kills,
+                        totalScore: playerState.score
+                    });
                 }
             }
         }
@@ -4783,6 +4888,22 @@ function handlePlayerHealthSync(message) {
         // Update nametag health bar
         const healthPercent = playerData.health / playerData.maxHealth;
         updatePlayerNametag(message.playerId, healthPercent);
+    }
+}
+
+
+// Handle weapon switch from other players (for spectator mode)
+function handlePlayerWeaponSwitch(message) {
+    if (!message.playerId || !message.weapon) return;
+    if (message.playerId === localPlayerId) return;
+
+    const playerData = remotePlayers.get(message.playerId);
+    if (playerData) {
+        playerData.currentWeapon = message.weapon;
+        // If we're spectating this player, update the weapon model
+        if (SpectatorMode.isSpectating && SpectatorMode.spectatingPlayerId === message.playerId) {
+            SpectatorMode.updateSpectatorWeapon();
+        }
     }
 }
 

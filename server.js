@@ -3714,6 +3714,12 @@ function handleMessage(playerId, message) {
             // Track player's current weapon for server-side damage calculation
             if (message.weapon && VALID_WEAPONS.includes(message.weapon)) {
                 player.currentWeapon = message.weapon;
+                // Broadcast weapon switch to other players (for spectator mode)
+                broadcastToOthers(playerId, {
+                    type: 'playerWeaponSwitch',
+                    playerId: playerId,
+                    weapon: message.weapon
+                });
             }
             break;
 
