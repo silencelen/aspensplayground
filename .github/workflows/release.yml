@@ -186,7 +186,7 @@ jobs:
             electron/dist/*.AppImage
             electron/dist/*.deb
             electron/dist/*.rpm
-            electron/dist/*.yml
+            electron/dist/latest*.yml
             electron/dist/*.blockmap
           retention-days: 5
           if-no-files-found: warn
@@ -280,7 +280,7 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.AppImage
-            artifacts/**/*.yml
+            artifacts/**/latest*.yml
             artifacts/**/*.blockmap
           fail_on_unmatched_files: false
         env:
