@@ -279,28 +279,41 @@ const Interpolation = {
 
     updateEntity(entity, targetPos, targetRot) {
         if (!entity.targetPosition) {
-            entity.targetPosition = { x: targetPos.x, z: targetPos.z };
+            entity.targetPosition = { x: targetPos.x, y: targetPos.y || 0, z: targetPos.z };
             entity.targetRotation = targetRot;
             entity.lastUpdateTime = Date.now();
         } else {
             entity.targetPosition.x = targetPos.x;
+            entity.targetPosition.y = targetPos.y !== undefined ? targetPos.y : entity.targetPosition.y;
             entity.targetPosition.z = targetPos.z;
             entity.targetRotation = targetRot;
             entity.lastUpdateTime = Date.now();
         }
     },
 
-    applyInterpolation(entity, mesh) {
+    applyInterpolation(entity, mesh, options = {}) {
         if (!entity.targetPosition || !mesh) return;
 
         mesh.position.x = this.lerp(mesh.position.x, entity.targetPosition.x, this.lerpFactor);
         mesh.position.z = this.lerp(mesh.position.z, entity.targetPosition.z, this.lerpFactor);
+
+        // Interpolate Y position for jump visibility (skip if skipY is true, e.g., for zombies)
+        if (!options.skipY && entity.targetPosition.y !== undefined) {
+            mesh.position.y = this.lerp(mesh.position.y, entity.targetPosition.y, this.lerpFactor);
+        }
 
         if (entity.targetRotation !== undefined) {
             // Add PI to flip model 180 degrees to face same direction as camera
             const targetWithOffset = entity.targetRotation + Math.PI;
             mesh.rotation.y = this.lerpAngle(mesh.rotation.y, targetWithOffset, this.rotLerpFactor);
         }
+    },
+
+    // Normalize angle to -PI to PI range
+    normalizeAngle(angle) {
+        while (angle > Math.PI) angle -= Math.PI * 2;
+        while (angle < -Math.PI) angle += Math.PI * 2;
+        return angle;
     }
 };
 

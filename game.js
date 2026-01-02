@@ -623,13 +623,15 @@ const SpectatorMode = {
         // Use raw player rotation data for responsive spectating (not interpolated mesh)
         camera.rotation.order = 'YXZ';
         // Y rotation (horizontal look) - use targetRotation for up-to-date direction
+        // Normalize angles to handle multiple full rotations properly
         if (playerData.targetRotation !== undefined) {
-            camera.rotation.y = playerData.targetRotation;
+            camera.rotation.y = Interpolation.normalizeAngle(playerData.targetRotation);
         } else if (playerData.rotation) {
-            camera.rotation.y = playerData.rotation.y || 0;
+            camera.rotation.y = Interpolation.normalizeAngle(playerData.rotation.y || 0);
         }
         // X rotation (vertical look) - use targetHeadRotation for pitch
-        camera.rotation.x = playerData.targetHeadRotation !== undefined ? playerData.targetHeadRotation : (playerData.rotation ? playerData.rotation.x : 0);
+        const pitch = playerData.targetHeadRotation !== undefined ? playerData.targetHeadRotation : (playerData.rotation ? playerData.rotation.x : 0);
+        camera.rotation.x = pitch;
         camera.rotation.z = 0;
 
         // Update HUD to show spectated player's stats
@@ -4793,6 +4795,13 @@ function handleRemotePlayerShoot(message) {
     if (mesh) {
         createRemoteMuzzleFlash(mesh);
         playSound('shoot');
+    }
+
+    // Create bullet tracer for remote player's shot
+    if (message.origin && message.direction) {
+        const origin = new THREE.Vector3(message.origin.x, message.origin.y, message.origin.z);
+        const direction = new THREE.Vector3(message.direction.x, message.direction.y, message.direction.z);
+        createBulletTracer(origin, direction);
     }
 }
 
@@ -12160,7 +12169,8 @@ function updateZombieAnimations(delta) {
 
         // Apply smooth interpolation instead of snapping position
         if (GameState.mode === 'multiplayer') {
-            Interpolation.applyInterpolation(zombie, zombie.mesh);
+            // Skip Y interpolation for zombies - they have special Y handling for abilities
+            Interpolation.applyInterpolation(zombie, zombie.mesh, { skipY: true });
             
             // Animate leap/charge Y-height for multiplayer (server handles X/Z)
             if (zombie.abilityState && zombie.abilityState.isLeaping) {
