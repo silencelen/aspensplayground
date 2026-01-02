@@ -3715,11 +3715,11 @@ function handleMessage(playerId, message) {
             if (message.weapon && VALID_WEAPONS.includes(message.weapon)) {
                 player.currentWeapon = message.weapon;
                 // Broadcast weapon switch to other players (for spectator mode)
-                broadcastToOthers(playerId, {
+                broadcastToRoom(room, {
                     type: 'playerWeaponSwitch',
                     playerId: playerId,
                     weapon: message.weapon
-                });
+                }, playerId);
             }
             break;
 
