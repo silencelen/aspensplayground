@@ -2591,6 +2591,108 @@
         #update-notification.ready .update-btn.primary:hover {
             background: linear-gradient(180deg, #ee9900 0%, #aa7700 100%);
         }
+
+        /* Settings Update Section (Electron only) */
+        .settings-update-section {
+            border-color: #2a4a2a !important;
+        }
+
+        .settings-update-section .settings-section-title {
+            color: #4a8;
+        }
+
+        .settings-update-version {
+            color: #6c6;
+            font-family: 'Orbitron', monospace;
+            font-weight: 500;
+        }
+
+        .settings-update-status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .settings-update-status.up-to-date {
+            background: rgba(68, 136, 68, 0.3);
+            color: #6c6;
+        }
+
+        .settings-update-status.checking {
+            background: rgba(136, 136, 68, 0.3);
+            color: #cc8;
+        }
+
+        .settings-update-status.available {
+            background: rgba(68, 136, 68, 0.3);
+            color: #6c6;
+        }
+
+        .settings-update-status.downloading {
+            background: rgba(68, 100, 136, 0.3);
+            color: #68c;
+        }
+
+        .settings-update-status.ready {
+            background: rgba(136, 100, 68, 0.3);
+            color: #c86;
+        }
+
+        .settings-update-status.error {
+            background: rgba(136, 68, 68, 0.3);
+            color: #c66;
+        }
+
+        .settings-update-progress {
+            margin-top: 8px;
+        }
+
+        .settings-update-progress-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .settings-update-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #486 0%, #6a8 100%);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .settings-update-btn {
+            background: linear-gradient(180deg, #3a6a3a 0%, #2a4a2a 100%);
+            border: 1px solid #4a8a4a;
+            color: #fff;
+            padding: 8px 16px;
+            font-family: 'Orbitron', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .settings-update-btn:hover {
+            background: linear-gradient(180deg, #4a8a4a 0%, #3a6a3a 100%);
+        }
+
+        .settings-update-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .settings-update-btn.install {
+            background: linear-gradient(180deg, #8a6a3a 0%, #6a4a2a 100%);
+            border-color: #aa8a4a;
+        }
+
+        .settings-update-btn.install:hover {
+            background: linear-gradient(180deg, #aa8a4a 0%, #8a6a3a 100%);
+        }
     </style>
 </head>
 <body>
@@ -2747,6 +2849,27 @@
                 <div class="settings-row">
                     <label for="shake-checkbox" class="settings-label">Screen Shake</label>
                     <input type="checkbox" id="shake-checkbox" class="settings-checkbox" checked aria-label="Enable screen shake effects">
+                </div>
+            </fieldset>
+
+            <!-- Update section - only visible in Electron installed mode -->
+            <fieldset class="settings-section settings-update-section" id="settings-update-section" style="display: none;">
+                <legend class="settings-section-title">ABOUT</legend>
+                <div class="settings-row">
+                    <span class="settings-label">Version</span>
+                    <span id="settings-version" class="settings-update-version">v1.0.0</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Status</span>
+                    <span id="settings-update-status" class="settings-update-status up-to-date">Up to date</span>
+                </div>
+                <div class="settings-row settings-update-progress" id="settings-update-progress-row" style="display: none;">
+                    <div class="settings-update-progress-container">
+                        <div class="settings-update-progress-fill" id="settings-update-progress"></div>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <button id="settings-check-update" class="settings-update-btn" aria-label="Check for game updates">Check for Updates</button>
                 </div>
             </fieldset>
 
@@ -4659,6 +4782,198 @@
             document.addEventListener('DOMContentLoaded', () => UpdateNotification.init());
         } else {
             UpdateNotification.init();
+        }
+
+        // Settings Update Section - shows version and update controls in settings menu
+        const SettingsUpdate = {
+            section: null,
+            statusEl: null,
+            versionEl: null,
+            progressRow: null,
+            progressFill: null,
+            button: null,
+            isElectron: false,
+            isPortable: false,
+            state: 'idle', // idle, checking, available, downloading, ready, error
+            availableVersion: null,
+
+            async init() {
+                this.section = document.getElementById('settings-update-section');
+                this.statusEl = document.getElementById('settings-update-status');
+                this.versionEl = document.getElementById('settings-version');
+                this.progressRow = document.getElementById('settings-update-progress-row');
+                this.progressFill = document.getElementById('settings-update-progress');
+                this.button = document.getElementById('settings-check-update');
+
+                if (!this.section || !this.button) return;
+
+                // Check if running in Electron
+                this.isElectron = typeof window.electronAPI !== 'undefined';
+                if (!this.isElectron) {
+                    return; // Keep section hidden for browser users
+                }
+
+                // Check if portable mode
+                try {
+                    this.isPortable = await window.electronAPI.isPortableMode();
+                    if (this.isPortable) {
+                        return; // Keep section hidden for portable mode
+                    }
+                } catch (e) {
+                    console.log('[SettingsUpdate] Could not detect portable mode:', e);
+                    return;
+                }
+
+                // Show section for installed Electron version
+                this.section.style.display = '';
+
+                // Display current version
+                try {
+                    const version = await window.electronAPI.getAppVersion();
+                    this.versionEl.textContent = 'v' + version;
+                } catch (e) {
+                    console.log('[SettingsUpdate] Could not get app version:', e);
+                }
+
+                this.setupEventListeners();
+                this.setupElectronListeners();
+            },
+
+            setupEventListeners() {
+                this.button.addEventListener('click', () => this.handleButtonClick());
+            },
+
+            setupElectronListeners() {
+                window.electronAPI.onUpdateAvailable((info) => {
+                    this.availableVersion = info.version;
+                    this.setState('available');
+                });
+
+                window.electronAPI.onUpdateNotAvailable(() => {
+                    this.setState('uptodate');
+                });
+
+                window.electronAPI.onDownloadProgress((progress) => {
+                    this.updateProgress(progress.percent);
+                });
+
+                window.electronAPI.onUpdateDownloaded((info) => {
+                    this.setState('ready');
+                });
+
+                window.electronAPI.onUpdateError((error) => {
+                    console.error('[SettingsUpdate] Error:', error);
+                    this.setState('error');
+                });
+            },
+
+            async handleButtonClick() {
+                switch (this.state) {
+                    case 'idle':
+                    case 'uptodate':
+                    case 'error':
+                        this.setState('checking');
+                        try {
+                            await window.electronAPI.checkForUpdates();
+                        } catch (e) {
+                            console.error('[SettingsUpdate] Check failed:', e);
+                            this.setState('error');
+                        }
+                        break;
+
+                    case 'available':
+                        this.setState('downloading');
+                        try {
+                            await window.electronAPI.downloadUpdate();
+                        } catch (e) {
+                            console.error('[SettingsUpdate] Download failed:', e);
+                            this.setState('error');
+                        }
+                        break;
+
+                    case 'ready':
+                        window.electronAPI.installUpdate();
+                        break;
+                }
+            },
+
+            setState(state) {
+                this.state = state;
+                this.updateUI();
+            },
+
+            updateUI() {
+                // Remove all state classes
+                this.statusEl.className = 'settings-update-status';
+
+                switch (this.state) {
+                    case 'idle':
+                    case 'uptodate':
+                        this.statusEl.textContent = 'Up to date';
+                        this.statusEl.classList.add('up-to-date');
+                        this.button.textContent = 'Check for Updates';
+                        this.button.disabled = false;
+                        this.button.className = 'settings-update-btn';
+                        this.progressRow.style.display = 'none';
+                        break;
+
+                    case 'checking':
+                        this.statusEl.textContent = 'Checking...';
+                        this.statusEl.classList.add('checking');
+                        this.button.textContent = 'Checking...';
+                        this.button.disabled = true;
+                        this.progressRow.style.display = 'none';
+                        break;
+
+                    case 'available':
+                        this.statusEl.textContent = 'Update available: v' + this.availableVersion;
+                        this.statusEl.classList.add('available');
+                        this.button.textContent = 'Download Update';
+                        this.button.disabled = false;
+                        this.button.className = 'settings-update-btn';
+                        this.progressRow.style.display = 'none';
+                        break;
+
+                    case 'downloading':
+                        this.statusEl.textContent = 'Downloading...';
+                        this.statusEl.classList.add('downloading');
+                        this.button.textContent = 'Downloading...';
+                        this.button.disabled = true;
+                        this.progressRow.style.display = '';
+                        this.progressFill.style.width = '0%';
+                        break;
+
+                    case 'ready':
+                        this.statusEl.textContent = 'Ready to install';
+                        this.statusEl.classList.add('ready');
+                        this.button.textContent = 'Install & Restart';
+                        this.button.disabled = false;
+                        this.button.className = 'settings-update-btn install';
+                        this.progressRow.style.display = 'none';
+                        break;
+
+                    case 'error':
+                        this.statusEl.textContent = 'Update failed';
+                        this.statusEl.classList.add('error');
+                        this.button.textContent = 'Retry';
+                        this.button.disabled = false;
+                        this.button.className = 'settings-update-btn';
+                        this.progressRow.style.display = 'none';
+                        break;
+                }
+            },
+
+            updateProgress(percent) {
+                this.progressFill.style.width = percent + '%';
+                this.statusEl.textContent = 'Downloading... ' + Math.round(percent) + '%';
+            }
+        };
+
+        // Initialize Settings Update when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => SettingsUpdate.init());
+        } else {
+            SettingsUpdate.init();
         }
     })();
     </script>
