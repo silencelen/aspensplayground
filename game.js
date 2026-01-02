@@ -1295,21 +1295,45 @@ const WeaponUpgrades = {
         // Prevent pointer lock loss from triggering pause during transition
         inShopTransition = true;
 
-        // Re-lock cursor for gameplay
+        // Re-lock cursor for gameplay (skip on mobile - not supported)
         const canvas = document.querySelector('canvas');
-        if (canvas) {
-            canvas.requestPointerLock();
+        const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (canvas && !isMobileDevice) {
+            try {
+                canvas.requestPointerLock();
+            } catch (e) {
+                DebugLog.log('Pointer lock request failed: ' + e.message, 'warn');
+            }
         }
 
-        DebugLog.log(`Upgrade shop closed, starting wave ${GameState.wave}. isRunning=${GameState.isRunning}, isPaused=${GameState.isPaused}`, 'game');
+        DebugLog.log(`Upgrade shop closed, starting wave ${GameState.wave}. isRunning=${GameState.isRunning}, isPaused=${GameState.isPaused}, isMobile=${isMobileDevice}`, 'game');
 
         // Start next wave (singleplayer) or wait for server (multiplayer)
         DebugLog.log(`closeShop mode check: mode=${GameState.mode}`, 'game');
         if (GameState.mode === 'singleplayer') {
+            // Store expected zombie count for fallback check
+            const expectedZombies = GameCore.WaveSystem.getZombieCount(GameState.wave, GameState.zombiesPerWave);
+            
             startSinglePlayerWave().catch(err => {
                 DebugLog.log(`Error starting wave: ${err.message}`, 'error');
                 console.error('Wave start error:', err);
             });
+            
+            // Fallback: If zombies haven't started spawning after 2 seconds, force retry
+            setTimeout(() => {
+                if (GameState.mode === 'singleplayer' && 
+                    GameState.isRunning && 
+                    !GameState.isPaused &&
+                    GameState.zombiesToSpawn === 0 && 
+                    GameState.zombiesSpawned === 0 &&
+                    countAliveZombies() === 0) {
+                    DebugLog.log('Wave start fallback triggered - retrying spawn', 'warn');
+                    GameState.zombiesRemaining = expectedZombies;
+                    GameState.zombiesToSpawn = expectedZombies;
+                    GameState.zombiesSpawned = 0;
+                    spawnNextZombie(expectedZombies, 400);
+                }
+            }, 2000);
         }
 
         // Clear transition flag after pointer lock events have settled
