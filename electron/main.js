@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, session, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, session, ipcMain, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -276,6 +276,46 @@ function createWindow() {
         console.log('[Electron] Certificate error:', error, 'for URL:', url);
         event.preventDefault();
         callback(true);
+    });
+
+    // Handle new window requests (target="_blank" links)
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        console.log('[Electron] Window open request:', url);
+
+        // External URLs - open in default browser
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            shell.openExternal(url);
+            return { action: 'deny' };
+        }
+
+        // Local files (privacy.html, terms.html) - open in popup window
+        if (url.includes('privacy.html') || url.includes('terms.html')) {
+            const isDev = !app.isPackaged;
+            const resourcePath = isDev
+                ? path.join(__dirname, '..')
+                : path.join(process.resourcesPath, 'app');
+
+            const fileName = url.includes('privacy.html') ? 'privacy.html' : 'terms.html';
+            const filePath = path.join(resourcePath, fileName);
+
+            // Create popup window for legal docs
+            const popup = new BrowserWindow({
+                width: 800,
+                height: 600,
+                parent: mainWindow,
+                modal: false,
+                autoHideMenuBar: true,
+                backgroundColor: '#1a0a0a',
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true
+                }
+            });
+            popup.loadFile(filePath);
+            return { action: 'deny' };
+        }
+
+        return { action: 'allow' };
     });
 }
 
