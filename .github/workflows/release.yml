@@ -232,25 +232,23 @@ jobs:
           echo "" >> changelog.md
 
           # Add download info
-          cat >> changelog.md << 'EOF'
-### Downloads
-
-| Platform | File | Description |
-|----------|------|-------------|
-| Windows | `.exe` (Setup) | Installer - recommended |
-| Windows | `.exe` (Portable) | No installation needed |
-| macOS | `.dmg` | Disk image |
-| Linux | `.AppImage` | Universal Linux package |
-
-### System Requirements
-- **OS**: Windows 10+, macOS 10.15+, or Linux
-- **RAM**: 4GB minimum
-- **GPU**: WebGL 2.0 compatible
-
----
-
-🎮 [Play in browser](https://aspensplayground.com) | 📖 [Wiki](https://github.com/silencelen/aspensplayground/wiki)
-EOF
+          echo "### Downloads" >> changelog.md
+          echo "" >> changelog.md
+          echo "| Platform | File | Description |" >> changelog.md
+          echo "|----------|------|-------------|" >> changelog.md
+          echo "| Windows | \`.exe\` (Setup) | Installer - recommended |" >> changelog.md
+          echo "| Windows | \`.exe\` (Portable) | No installation needed |" >> changelog.md
+          echo "| macOS | \`.dmg\` | Disk image |" >> changelog.md
+          echo "| Linux | \`.AppImage\` | Universal Linux package |" >> changelog.md
+          echo "" >> changelog.md
+          echo "### System Requirements" >> changelog.md
+          echo "- **OS**: Windows 10+, macOS 10.15+, or Linux" >> changelog.md
+          echo "- **RAM**: 4GB minimum" >> changelog.md
+          echo "- **GPU**: WebGL 2.0 compatible" >> changelog.md
+          echo "" >> changelog.md
+          echo "---" >> changelog.md
+          echo "" >> changelog.md
+          echo "🎮 [Play in browser](https://aspensplayground.com) | 📖 [Wiki](https://github.com/silencelen/aspensplayground/wiki)" >> changelog.md
 
           echo "Generated changelog:"
           cat changelog.md
