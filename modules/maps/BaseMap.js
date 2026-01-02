@@ -74,6 +74,8 @@ class BaseMap {
         this.obstacles = [];
         this.lights = [];
         this.decorations = [];
+        this.playerSpawns = [];
+        this.zombieSpawns = [];
 
         this.isCreated = false;
         console.log(`[${this.name}] Map destroyed`);
