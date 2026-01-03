@@ -1262,6 +1262,25 @@ function setElementStyle(id, property, value) {
     if (el) el.style[property] = value;
 }
 
+// Safely request pointer lock with error handling
+// Prevents WrongDocumentError in Electron and other contexts
+function safeRequestPointerLock() {
+    // Skip on mobile devices
+    const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (isMobileDevice) return;
+
+    try {
+        // Prefer canvas, fall back to document.body
+        const target = document.querySelector('canvas') || document.body;
+        if (target && document.pointerLockElement !== target) {
+            target.requestPointerLock();
+        }
+    } catch (e) {
+        // Silently ignore pointer lock errors (common in Electron, iframes, unfocused windows)
+        DebugLog.log('Pointer lock request failed: ' + e.message, 'warn');
+    }
+}
+
 // ==================== HAPTIC FEEDBACK ====================
 // Vibration durations for different events
 const HAPTIC = {
@@ -1574,18 +1593,10 @@ const WeaponUpgrades = {
         // Prevent pointer lock loss from triggering pause during transition
         inShopTransition = true;
 
-        // Re-lock cursor for gameplay (skip on mobile - not supported)
-        const canvas = document.querySelector('canvas');
-        const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        if (canvas && !isMobileDevice) {
-            try {
-                canvas.requestPointerLock();
-            } catch (e) {
-                DebugLog.log('Pointer lock request failed: ' + e.message, 'warn');
-            }
-        }
+        // Re-lock cursor for gameplay
+        safeRequestPointerLock();
 
-        DebugLog.log(`Upgrade shop closed, starting wave ${GameState.wave}. isRunning=${GameState.isRunning}, isPaused=${GameState.isPaused}, isMobile=${isMobileDevice}`, 'game');
+        DebugLog.log(`Upgrade shop closed, starting wave ${GameState.wave}. isRunning=${GameState.isRunning}, isPaused=${GameState.isPaused}`, 'game');
 
         // Start next wave (singleplayer) or wait for server (multiplayer)
         DebugLog.log(`closeShop mode check: mode=${GameState.mode}`, 'game');
@@ -2182,7 +2193,17 @@ async function fetchLeaderboard() {
     return cachedLeaderboard;
 }
 
+// Prevent double score submission
+let isSubmittingScore = false;
+
 async function submitScore(name) {
+    // Prevent double submission
+    if (isSubmittingScore) {
+        DebugLog.log('Score submission already in progress, skipping', 'warn');
+        return { added: false, rank: -1, leaderboard: cachedLeaderboard, error: 'Submission in progress' };
+    }
+    isSubmittingScore = true;
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
@@ -2241,6 +2262,8 @@ async function submitScore(name) {
         } else {
             DebugLog.log(`Failed to submit score: ${e.message}`, 'error');
         }
+    } finally {
+        isSubmittingScore = false;
     }
     return { added: false, rank: -1, leaderboard: cachedLeaderboard };
 }
@@ -4606,7 +4629,7 @@ function handleInit(message) {
 
         // Request pointer lock after a short delay
         setTimeout(() => {
-            document.body.requestPointerLock();
+            safeRequestPointerLock();
         }, 500);
 
         updateHUD();
@@ -5545,9 +5568,9 @@ function handleGameStart(message) {
     if (isMobile) {
         showMobileControls();
     } else {
-        // DEBUG: Skip pointer lock in multiplayer to test if it's causing render freeze
+        // Request pointer lock (skip in multiplayer - uses click-to-start overlay)
         if (GameState.mode !== 'multiplayer') {
-            document.body.requestPointerLock();
+            safeRequestPointerLock();
         }
     }
     updateHUD();
@@ -5591,7 +5614,7 @@ function showClickToStartOverlay() {
         GameState.isPaused = false;
         GameState.isRunning = true;
         playerState.isAlive = true;
-        document.body.requestPointerLock();
+        safeRequestPointerLock();
         DebugLog.log('Click-to-start: Game unpaused, pointer lock requested', 'game');
     };
 }
@@ -9833,7 +9856,7 @@ function onMouseMove(event) {
 function onMouseDown(event) {
     if (event.button === 0) {
         if (!pointerLocked && GameState.isRunning && !GameState.isPaused) {
-            document.body.requestPointerLock();
+            safeRequestPointerLock();
         } else if (GameState.isRunning && !GameState.isPaused) {
             weapon.isFiring = true;
             shoot();
@@ -12622,7 +12645,7 @@ function startSinglePlayerGame() {
     } else {
         // Request pointer lock
         setTimeout(() => {
-            document.body.requestPointerLock();
+            safeRequestPointerLock();
         }, 100);
     }
 
@@ -14787,7 +14810,7 @@ function initEventListeners() {
 
     document.getElementById('resume-button')?.addEventListener('click', () => {
         togglePause();
-        document.body.requestPointerLock();
+        safeRequestPointerLock();
     });
 
     document.getElementById('quit-button')?.addEventListener('click', () => {
