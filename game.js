@@ -420,6 +420,16 @@ const SpectatorMode = {
         player.remove(camera);
         scene.add(camera);
 
+        // IMMEDIATELY position camera at spectated player (don't wait for updateCamera)
+        const spectatedMesh = remotePlayerMeshes.get(this.spectatingPlayerId);
+        if (spectatedMesh && spectatedMesh.position) {
+            camera.position.set(
+                spectatedMesh.position.x,
+                CONFIG.player.height,
+                spectatedMesh.position.z
+            );
+        }
+
         // Hide mobile controls in spectator mode (they block the death overlay)
         const mobileControls = document.getElementById('mobile-controls');
         if (mobileControls) mobileControls.classList.remove('visible');
