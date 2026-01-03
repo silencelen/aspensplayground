@@ -387,6 +387,9 @@ const SpectatorMode = {
     _hiddenMeshId: null,
     _originalWeaponVisibility: {},  // Track original weapon visibility states
     _deathOverlayShown: false,  // Track if death overlay was already shown
+    _deathOverlayTimeout: null,  // Track timeout for cleanup
+    _prevBtnHandler: null,  // Track event handlers to prevent duplicates
+    _nextBtnHandler: null,
 
     // Get list of alive players to spectate
     getAlivePlayers() {
@@ -467,7 +470,11 @@ const SpectatorMode = {
         const playerData = remotePlayers.get(this.spectatingPlayerId);
         if (!playerData) return;
 
-        const spectatedWeapon = playerData.currentWeapon || 'pistol';
+        // Validate weapon name - fall back to pistol if invalid
+        let spectatedWeapon = playerData.currentWeapon || 'pistol';
+        if (!weaponModels[spectatedWeapon]) {
+            spectatedWeapon = 'pistol';
+        }
 
         // Hide all weapon models first
         Object.keys(weaponModels).forEach(key => {
@@ -558,7 +565,9 @@ const SpectatorMode = {
         const alivePlayers = this.getAlivePlayers();
         if (alivePlayers.length === 0) return;
 
-        const currentIndex = alivePlayers.findIndex(p => p.id === this.spectatingPlayerId);
+        let currentIndex = alivePlayers.findIndex(p => p.id === this.spectatingPlayerId);
+        // If current player not found (died/left), start from beginning
+        if (currentIndex === -1) currentIndex = 0;
         const nextIndex = (currentIndex + 1) % alivePlayers.length;
         this.spectatingPlayerId = alivePlayers[nextIndex].id;
 
@@ -577,7 +586,9 @@ const SpectatorMode = {
         const alivePlayers = this.getAlivePlayers();
         if (alivePlayers.length === 0) return;
 
-        const currentIndex = alivePlayers.findIndex(p => p.id === this.spectatingPlayerId);
+        let currentIndex = alivePlayers.findIndex(p => p.id === this.spectatingPlayerId);
+        // If current player not found (died/left), start from end
+        if (currentIndex === -1) currentIndex = 0;
         const prevIndex = (currentIndex - 1 + alivePlayers.length) % alivePlayers.length;
         this.spectatingPlayerId = alivePlayers[prevIndex].id;
 
@@ -598,7 +609,7 @@ const SpectatorMode = {
         const playerData = remotePlayers.get(this.spectatingPlayerId);
         const mesh = remotePlayerMeshes.get(this.spectatingPlayerId);
 
-        if (!playerData || !mesh) {
+        if (!playerData || !mesh || !mesh.position) {
             // Player no longer available, try to find another
             const alivePlayers = this.getAlivePlayers();
             if (alivePlayers.length > 0) {
@@ -607,8 +618,16 @@ const SpectatorMode = {
                 this.updateSpectatorWeapon();
                 this.updateSpectatorUI();
             } else {
-                // No one left to spectate
-                this.isSpectating = false;
+                // No one left to spectate - properly exit
+                this.exit();
+                // Trigger game over if not already
+                if (!GameState.isGameOver) {
+                    handleGameOver({
+                        wave: GameState.wave,
+                        totalKills: GameStats.kills || 0,
+                        totalScore: playerState.score
+                    });
+                }
             }
             return;
         }
@@ -630,11 +649,16 @@ const SpectatorMode = {
         // but continuous rotation (handles crossing 2π boundary smoothly)
         if (playerData.targetRotation !== undefined) {
             camera.rotation.y = Interpolation.lerpAngle(camera.rotation.y, playerData.targetRotation, 1.0);
-        } else if (playerData.rotation) {
-            camera.rotation.y = Interpolation.lerpAngle(camera.rotation.y, playerData.rotation.y || 0, 1.0);
+        } else if (playerData.rotation && typeof playerData.rotation.y === 'number') {
+            camera.rotation.y = Interpolation.lerpAngle(camera.rotation.y, playerData.rotation.y, 1.0);
         }
         // X rotation (vertical look) - use targetHeadRotation for pitch
-        const pitch = playerData.targetHeadRotation !== undefined ? playerData.targetHeadRotation : (playerData.rotation ? playerData.rotation.x : 0);
+        let pitch = 0;
+        if (playerData.targetHeadRotation !== undefined) {
+            pitch = playerData.targetHeadRotation;
+        } else if (playerData.rotation && typeof playerData.rotation.x === 'number') {
+            pitch = playerData.rotation.x;
+        }
         camera.rotation.x = pitch;
         camera.rotation.z = 0;
 
@@ -727,11 +751,12 @@ const SpectatorMode = {
 
             document.body.appendChild(overlay);
 
-            // Remove after animation
-            setTimeout(() => {
+            // Remove after animation - track timeout so we can cancel if needed
+            this._deathOverlayTimeout = setTimeout(() => {
                 if (overlay && overlay.parentNode) {
                     overlay.parentNode.removeChild(overlay);
                 }
+                this._deathOverlayTimeout = null;
             }, 3000);
         }
     },
@@ -770,11 +795,22 @@ const SpectatorMode = {
                 <button id="spectator-next" style="${buttonStyle}" aria-label="Next player">&gt;</button>
             `;
 
-            // Add touch event listeners
+            // Add touch event listeners - use stored handlers to prevent duplicates
             const prevBtn = document.getElementById('spectator-prev');
             const nextBtn = document.getElementById('spectator-next');
-            if (prevBtn) prevBtn.addEventListener('touchstart', (e) => { e.preventDefault(); SpectatorMode.cyclePrev(); }, { passive: false });
-            if (nextBtn) nextBtn.addEventListener('touchstart', (e) => { e.preventDefault(); SpectatorMode.cycleNext(); }, { passive: false });
+
+            // Create handlers if not exists (prevents creating new functions each call)
+            if (!this._prevBtnHandler) {
+                this._prevBtnHandler = (e) => { e.preventDefault(); SpectatorMode.cyclePrev(); };
+            }
+            if (!this._nextBtnHandler) {
+                this._nextBtnHandler = (e) => { e.preventDefault(); SpectatorMode.cycleNext(); };
+            }
+
+            // innerHTML replaces elements, so old listeners are automatically removed
+            // Just add fresh listeners to the new elements
+            if (prevBtn) prevBtn.addEventListener('touchstart', this._prevBtnHandler, { passive: false });
+            if (nextBtn) nextBtn.addEventListener('touchstart', this._nextBtnHandler, { passive: false });
         } else {
             ui.innerHTML = `
                 <span style="color: #ff4444;">SPECTATING</span>
@@ -805,16 +841,25 @@ const SpectatorMode = {
         // Restore local player's weapon
         updateWeaponModel();
 
+        // Clear any pending death overlay timeout
+        if (this._deathOverlayTimeout) {
+            clearTimeout(this._deathOverlayTimeout);
+            this._deathOverlayTimeout = null;
+        }
+
         const ui = document.getElementById('spectator-ui');
         if (ui && ui.parentNode) ui.parentNode.removeChild(ui);
 
         const overlay = document.getElementById('death-overlay');
         if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
 
+        // Reset all state
         this.isSpectating = false;
         this.spectatingPlayerId = null;
         this._hiddenMeshId = null;
         this._deathOverlayShown = false;
+        this._prevBtnHandler = null;
+        this._nextBtnHandler = null;
     }
 };
 
@@ -4917,18 +4962,18 @@ function handlePlayerDied(playerId) {
                 if (alivePlayers.length > 0) {
                     SpectatorMode.spectatingPlayerId = alivePlayers[0].id;
                     SpectatorMode.hideSpectatedMesh(alivePlayers[0].id);
+                    SpectatorMode.updateSpectatorWeapon();
                     SpectatorMode.updateSpectatorUI();
                 } else {
-                    // No one left to spectate - game over for everyone
-                    SpectatorMode.hideSpectatorUI();
-                    SpectatorMode.isSpectating = false;
+                    // No one left to spectate - properly exit and trigger game over
+                    SpectatorMode.exit();
 
                     // Trigger game over screen for spectators
                     if (!GameState.isGameOver) {
                         DebugLog.log('All players dead - triggering game over for spectator', 'game');
                         handleGameOver({
                             wave: GameState.wave,
-                            totalKills: GameStats.kills,
+                            totalKills: GameStats.kills || 0,
                             totalScore: playerState.score
                         });
                     }
