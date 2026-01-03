@@ -9874,7 +9874,9 @@ function onMouseUp(event) {
 let inShopTransition = false;
 
 function onPointerLockChange() {
-    pointerLocked = document.pointerLockElement === document.body;
+    // Check for either canvas or body as pointer lock target
+    const canvas = document.querySelector('canvas');
+    pointerLocked = document.pointerLockElement === canvas || document.pointerLockElement === document.body;
 
     // Don't auto-pause on mobile when pointer lock is lost
     const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
